@@ -1,4 +1,4 @@
-# Filename: main_function.py
+# Filename: tensor_toolbox_usage.py
 
 import numpy as np
 import tensorflow as tf
