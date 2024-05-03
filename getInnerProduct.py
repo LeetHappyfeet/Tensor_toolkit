@@ -1,5 +1,6 @@
 # Filename: getInnerProduct.py
 import numpy as np
+from verifyTensor import verifyTensor
 
 ##ensure that you have defined the verifyTensor and c4Inv functions or integrate their functionalities within this code.
 ##Also, make sure that the input vecA, vecB, and Metric are dictionaries containing the appropriate keys.
