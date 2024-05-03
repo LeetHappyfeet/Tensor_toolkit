@@ -1,5 +1,6 @@
 # Filename: getTrace
 import numpy as np
+from verifyTensor import verifyTensor
 
 def getTrace(tensor, metric):
     """
