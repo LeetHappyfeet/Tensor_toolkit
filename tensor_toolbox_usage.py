@@ -1,4 +1,5 @@
 # Filename: tensor_toolbox_usage.py
+#this file is an example of how one can use the functions in a program. 
 
 import numpy as np
 import tensorflow as tf
