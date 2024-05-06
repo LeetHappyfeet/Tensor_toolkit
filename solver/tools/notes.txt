@@ -1,1 +1,10 @@
 A few quick notes on this code. the variables gu, gl,R_munu, and gu are not correctly defined. They are placeholder values that will need some sort of separate math to work. They will probably become their own variables.
+
+RikiT2
+In this Python version:
+
+    We precalculate the metric derivatives for improved performance.
+    We construct the Ricci tensor using nested loops and preallocated arrays.
+    The result is returned as the Ricci tensor.
+
+Make sure to replace gu, gl, and delta with appropriate values when using the function. Also, ensure that all components of the tensor arrays have the same shape.
