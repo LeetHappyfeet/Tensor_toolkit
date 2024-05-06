@@ -1,4 +1,5 @@
 import numpy as np
+from verifyTensor import verifyTensor
 
 def getEnergyTensor(metric, tryGPU=False, diffOrder='fourth'):
     """
