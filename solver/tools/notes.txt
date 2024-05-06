@@ -2,7 +2,7 @@ A few quick notes on this code. the variables gu, gl, and gu are not correctly d
 c4Inv2
 In this version:
     We use np.linalg.det() to calculate the determinant of the matrix.
-    We iterate over each element of the matrix to calculate the corresponding element of the inverse matrix using the formula provided.
+    We iterate over each element of the matrix to calculate the corresponding element of the inverse matrix.
     The final result is returned as a NumPy array.
 
 However, keep in mind that for small matrices like 4x4, the performance gains might not be significant compared to using NumPy. We should definitely look into this further.
