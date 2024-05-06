@@ -15,6 +15,7 @@ def getEnergyTensor(metric, tryGPU=False, diffOrder='fourth'):
     - energy: A dictionary representing the energy tensor
     """
 
+
     # Handle default input arguments
     if diffOrder not in ['second', 'fourth']:
         raise ValueError("Order Flag Not Specified Correctly. Options: 'second' or 'fourth'")
@@ -45,7 +46,7 @@ def getEnergyTensor(metric, tryGPU=False, diffOrder='fourth'):
     else:
         # Compute on CPU
         if diffOrder == 'fourth':
-            energyTensor = met2den(metric['tensor'], metric['scaling'])
+            energyTensor = met2den(metric['tensor'], metric.get('scaling', 1.0))
         elif diffOrder == 'second':
             energyTensor = met2den2(metric['tensor'], metric['scaling'])
 
