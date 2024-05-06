@@ -1,4 +1,4 @@
-A few quick notes on this code. the variables gu, gl,R_munu, and gu are not correctly defined. They are placeholder values that will need some sort of separate math to work. They will probably become their own variables.
+A few quick notes on this code. the variables gu, gl, and gu are not correctly defined. They are placeholder values that will need some sort of separate math to work. They will probably become their own variables.
 
 RikiT2
 In this Python version:
@@ -8,3 +8,12 @@ In this Python version:
     The result is returned as the Ricci tensor.
 
 Make sure to replace gu, gl, and delta with appropriate values when using the function. Also, ensure that all components of the tensor arrays have the same shape.
+
+ricciTMem2
+This Python version:
+
+    Calculates the size of gl{1,1} using np.shape().
+    Initializes the Ricci tensor R_munu.
+    Precalculates metric derivatives and assigns symmetric values.
+    Constructs the Ricci tensor using nested loops and appropriate functions.
+    Returns the Ricci tensor R_munu.
