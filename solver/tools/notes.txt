@@ -16,7 +16,7 @@ cDet2
 
 EinT2
     We initialize the Einstein tensor as a 4x4 matrix.
-    We calculate each component of the Einstein tensor using nested loops, as in the MATLAB code.
+    We calculate each component of the Einstein tensor using nested loops.
     The result is returned as a 4x4 matrix representing the Einstein tensor.
 
 met2den2
