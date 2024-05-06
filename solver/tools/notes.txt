@@ -1,19 +1,63 @@
 A few quick notes on this code. the variables gu, gl, and gu are not correctly defined. They are placeholder values that will need some sort of separate math to work. They will probably become their own variables.
+c4Inv2
+In this version:
+    We use np.linalg.det() to calculate the determinant of the matrix.
+    We iterate over each element of the matrix to calculate the corresponding element of the inverse matrix using the formula provided.
+    The final result is returned as a NumPy array.
+
+However, keep in mind that for small matrices like 4x4, the performance gains might not be significant compared to using NumPy. We should definitely look into this further.
+
+cDet2
+    It handles the base case for a 2x2 matrix.
+    It iterates over each element in the first row of the cell array, calculating the contribution of each element to the determinant recursively by computing the determinant of the corresponding subarray.
+    It applies the appropriate sign to each term based on the element's position.
+    Finally, it returns the determinant of the cell array.
+
+
+EinT2
+    We initialize the Einstein tensor as a 4x4 matrix.
+    We calculate each component of the Einstein tensor using nested loops, as in the MATLAB code.
+    The result is returned as a 4x4 matrix representing the Einstein tensor.
+
+met2den2
+
+    We set default values for delta and units if they are not provided.
+    We calculate the Ricci tensor, Ricci scalar, Einstein tensor, and energy density tensor using the helper functions.
+    The resulting energy density tensor is returned.
+
+
+RicciS2
+
+    We initialize the Ricci scalar to zero.
+    We calculate the Ricci scalar by summing over all components of the Ricci tensor multiplied by the corresponding components of the metric tensor.
+    The result is returned as the Ricci scalar.
 
 RikiT2
-In this Python version:
 
     We precalculate the metric derivatives for improved performance.
     We construct the Ricci tensor using nested loops and preallocated arrays.
     The result is returned as the Ricci tensor.
 
-Make sure to replace gu, gl, and delta with appropriate values when using the function. Also, ensure that all components of the tensor arrays have the same shape.
+
 
 ricciTMem2
-This Python version:
 
     Calculates the size of gl{1,1} using np.shape().
     Initializes the Ricci tensor R_munu.
     Precalculates metric derivatives and assigns symmetric values.
     Constructs the Ricci tensor using nested loops and appropriate functions.
     Returns the Ricci tensor R_munu.
+
+takeFiniteDifference1_2
+
+    Determines the shape of the input array A.
+    Initializes the output array B with zeros of the same type and shape as A.
+    Computes the finite difference along the k-th coordinate direction using slicing and broadcasting operations.
+    Handles boundary conditions to ensure the array indices remain within bounds.
+
+takeFiniteDifference2_2
+
+    Determines the shape of the input array A.
+    Initializes the output array B with zeros of the same type and shape as A.
+    Computes the finite difference along the k1 and k2 coordinate directions using slicing and broadcasting operations.
+    Also handles boundary conditions to ensure the array indices remain within bounds.
