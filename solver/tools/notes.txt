@@ -1,0 +1,1 @@
+A few quick notes on this code. the variables gu, gl,R_munu, and gu are not correctly defined. They are placeholder values that will need some sort of separate math to work. They will probably become their own variables.
