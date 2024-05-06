@@ -1,6 +1,7 @@
 #Hey Heads Up!. The constants will need to be updated shortly to deal with quantum physics. While they are constants, they actually aren't. This is an assumption.
+#Called by met2den.py
 
-def einE2(E, gu, units):
+def einE(E, gu, units):
     # Constants
     G = 6.674 * 10**-11 * units[2]**2 * units[1] / units[0]**3
     c = 2.99792 * 10**8 * units[2] / units[0]
