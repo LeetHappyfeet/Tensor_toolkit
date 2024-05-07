@@ -9,7 +9,8 @@ Sure, here's a sample README.md file for your "Tensor Toolkit" project:
 # Tensor Toolkit
 
 Tensor Toolkit is a collection of Python tools and utilities for working with tensors in computational physics and general relativity simulations.
-This toolkit provides a set of functions to manipulate tensors, compute stress-energy tensors, generate vector fields, and perform other common operations used in tensor analysis.
+This toolkit provides a set of functions to manipulate tensors, compute stress-energy tensors,
+generate vector fields, and perform other common operations used in tensor analysis.
 
 ## Installation
 
