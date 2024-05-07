@@ -14,9 +14,6 @@ Tensor Toolkit is a collection of Python tools and utilities for working with te
 
 To use Tensor Toolkit, simply clone this repository to your local machine:
 
-```bash
-git clone https://github.com/your-username/tensor-toolkit.git
-```
 
 ## Requirements
 
