@@ -1,69 +1,76 @@
 import numpy as np
 import tensorflow as tf
-from setMinkowskiThreePlusOne import setMinkowskiThreePlusOne
-from threePlusOneBuilder import threePlusOneBuilder
+from Metrics.setMinkowskiThreePlusOne import setMinkowskiThreePlusOne
+from Metrics.threePlusOneBuilder import threePlusOneBuilder
 
+tf.compat.v1.disable_eager_execution()
 # Define shape function for Alcubierre metric
 def shapeFunction_Alcubierre(r, R, sigma):
     return tf.exp(-((r - R) / sigma) ** 2)
 
 # Define function to build the Alcubierre metric in a Galilean comoving frame
 def metricGet_AlcubierreComoving(gridSize, worldCenter, v, R, sigma, gridScale):
-    # Handle default input arguments
-    if len(gridScale) < 4:
-        gridScale += [1] * (4 - len(gridScale))
+    # Ensure worldCenter has enough elements
+    if len(worldCenter) < 4:
+        raise ValueError("worldCenter must have at least 4 elements.")
 
-    # Check if gridSize in time is 1 and raise error if not
-    if gridSize[0] > 1:
-        raise ValueError('The time grid is greater than 1, only a size of 1 can be used in comoving')
+    # Initialize TensorFlow session
+    with tf.compat.v1.Session() as sess:
+        # Define placeholders for r, R, and sigma
+        r_placeholder = tf.compat.v1.placeholder(tf.float32)
+        R_placeholder = tf.compat.v1.placeholder(tf.float32)
+        sigma_placeholder = tf.compat.v1.placeholder(tf.float32)
 
-    # Assign parameters to metric struct
-    metric = {}
-    metric['params'] = {
-        'gridSize': gridSize,
-        'worldCenter': worldCenter,
-        'velocity': v,
-        'R': R,
-        'sigma': sigma
-    }
+        # Compute shape function
+        shape_function = shapeFunction_Alcubierre(r_placeholder, R_placeholder, sigma_placeholder)
 
-    # Assign quantities to metric struct
-    metric['type'] = "metric"
-    metric['name'] = 'Alcubierre Comoving'
-    metric['scaling'] = gridScale
-    metric['coords'] = "cartesian"
-    metric['index'] = "covariant"
-    metric['date'] = tf.strings.format("{}", tf.date)
+        # Initialize variables
+        sess.run(tf.compat.v1.global_variables_initializer())
 
-    # Declare a Minkowski space
-    alpha, beta, gamma = setMinkowskiThreePlusOne(gridSize)
+        # Define values for r, R, and sigma
+        r_value = 5.0  # provide appropriate value
+        R_value = 10.0  # provide appropriate value
+        sigma_value = 2.0  # provide appropriate value
 
-    # Add the Alcubierre modification
-    t = 0  # only one timeslice is used
-    for i in range(gridSize[1]):
-        for j in range(gridSize[2]):
-            for k in range(gridSize[3]):
-                # Find grid center x, y, z
-                x = (i + 1) * gridScale[1] - worldCenter[1]
-                y = (j + 1) * gridScale[2] - worldCenter[2]
-                z = (k + 1) * gridScale[3] - worldCenter[3]
+        # Evaluate shape function
+        result = sess.run(shape_function, feed_dict={r_placeholder: r_value, R_placeholder: R_value, sigma_placeholder: sigma_value})
 
-                # Find the radius from the center of the bubble
-                r = tf.sqrt(tf.pow(x, 2) + tf.pow(y, 2) + tf.pow(z, 2))
+        # Declare a Minkowski space
+        alpha, beta, gamma = setMinkowskiThreePlusOne(gridSize)
 
-                # Find shape function at this point in r
-                fs = shapeFunction_Alcubierre(r, R, sigma)
+        # Add the Alcubierre modification
+        t = 0  # only one timeslice is used
+        for i in range(gridSize[1]):
+            for j in range(gridSize[2]):
+                for k in range(gridSize[3]):
+                    # Find grid center x, y, z
+                    x = (i + 1) * gridScale[1] - worldCenter[1]
+                    y = (j + 1) * gridScale[2] - worldCenter[2]
+                    z = (k + 1) * gridScale[3] - worldCenter[3]
 
-                # Add alcubierre modification to dxdt
-                beta[0][t, i, j, k] = v * (1 - fs)
+                    # Find the radius from the center of the bubble
+                    r_value = np.sqrt(x**2 + y**2 + z**2)
 
-    # Make tensor from the 3+1 functions
-    metric['tensor'] = threePlusOneBuilder(alpha, beta, gamma)
+                    # Evaluate shape function using placeholders
+                    fs_value = sess.run(shape_function, feed_dict={r_placeholder: r_value, R_placeholder: R, sigma_placeholder: sigma})
 
-    return metric
+                    # Add alcubierre modification to beta
+                    beta[0][t, i, j, k] = v * (1 - fs_value)
 
-# Import setMinkowskiThreePlusOne function from provided file
-from setMinkowskiThreePlusOne import setMinkowskiThreePlusOne
+        # Make tensor from the 3+1 functions
+        metric = {}
+        metric['params'] = {
+            'gridSize': gridSize,
+            'worldCenter': worldCenter,
+            'velocity': v,
+            'R': R,
+            'sigma': sigma
+        }
+        metric['type'] = "metric"
+        metric['name'] = 'Alcubierre Comoving'
+        metric['scaling'] = gridScale
+        metric['coords'] = "cartesian"
+        metric['index'] = "covariant"
+        metric['tensor'] = threePlusOneBuilder(alpha, beta, gamma)
 
-# Import threePlusOneBuilder function from provided file
-from threePlusOneBuilder import threePlusOneBuilder
+        return metric
