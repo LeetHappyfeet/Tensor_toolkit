@@ -1,7 +1,7 @@
 import numpy as np
-from verifyTensor import verifyTensor
-from met2den import met2den 
-from metric_definition import metric
+from Metrics.verifyTensor import verifyTensor
+from solver.met2den import met2den 
+from solver.metric_definition import metric
 def getEnergyTensor(metric, tryGPU=False, diffOrder='fourth'):
     """
     Converts the metric into the stress energy tensor

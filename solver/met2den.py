@@ -1,6 +1,6 @@
 import numpy as np
-from tools import ricciS, ricciT, einT, einE
-from tools.c4Inv import c4Inv
+from solver.tools import ricciS, ricciT, einT, einE
+from solver.tools.c4Inv import c4Inv2
 
 def met2den(gl, delta=None):
     """
