@@ -43,6 +43,7 @@ def metricGet_AlcubierreComoving(gridSize, worldCenter, v, R, sigma, gridScale):
         for i in range(gridSize[1]):
             for j in range(gridSize[2]):
                 for k in range(gridSize[3]):
+                    print(f"Processing: i={i}, j={j}, k={k}")  # Monitoring output
                     # Find grid center x, y, z
                     x = (i + 1) * gridScale[1] - worldCenter[1]
                     y = (j + 1) * gridScale[2] - worldCenter[2]
