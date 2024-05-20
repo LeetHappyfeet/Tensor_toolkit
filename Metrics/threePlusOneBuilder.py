@@ -1,50 +1,64 @@
-# Filename: threePlusOneBuilder.py
 import numpy as np
-from verifyTensor import verifyTensor
-
-def threePlusOneBuilder(alpha, beta, gamma, threshold=1e-10):
+from Metrics.verifyTensor import verifyTensor
+from solver.met2den import met2den 
+from solver.metric_definition import metric
+def getEnergyTensor(metric, tryGPU=False, diffOrder='fourth'):
     """
-    Builds the metric tensor given input 3+1 components of alpha, beta, and gamma.
+    Converts the metric into the stress energy tensor
 
-    Args:
-    alpha (numpy.ndarray): Lapse rate map across spacetime.
-    beta (list of numpy.ndarray): Covariant shift vector map across spacetime.
-    gamma (list of list of numpy.ndarray): Covariant spatial term map across spacetime.
-    threshold (float): Threshold value for the signature criterion.
+    Parameters:
+    - metric: A metric dictionary containing tensor components and other information
+    - tryGPU: A flag indicating whether to use GPU computation (default: False)
+    - diffOrder: Order of finite difference, either 'second' or 'fourth' (default: 'fourth')
 
     Returns:
-    metricTensor (dict): Metric tensor represented as a dictionary.
+    - energy: A dictionary representing the energy tensor
     """
 
-    # Set spatial components
-    gamma_up = [np.linalg.inv(g) for g in gamma]
 
-    # Find gridSize
-    s = alpha.shape
+    # Handle default input arguments
+    if diffOrder not in ['second', 'fourth']:
+        raise ValueError("Order Flag Not Specified Correctly. Options: 'second' or 'fourth'")
 
-    # Caluculate beta_i
-    beta_up = [np.zeros(s) for _ in range(3)]
-    for i in range(3):
-        for j in range(3):
-            beta_up[i] += gamma_up[i][j] * beta[j]
+    # Check that the metric is verified and covariant
+    if not verifyTensor(metric, 1):
+        raise ValueError("Metric is not verified. Please verify metric using verifyTensor(metric).")
+    if metric['index'] != "covariant":
+        metric = changeTensorIndex(metric, "covariant")
+        print(f"Changed metric from {metric['index']} index to {'covariant'} index")
 
-    # Create time-time component
-    metricTensor = {(1, 1): -alpha ** 2}
-    for i in range(3):
-        metricTensor[(1, 1)] += beta_up[i] * beta[i]
+    # Compute on GPU if tryGPU flag is True
+    if tryGPU:
+        # Convert metric to GPU array
+        metricTensorGPU = [[np.array(component, dtype='float32') for component in row] for row in metric['tensor']]
+        metricTensorGPU = np.array(metricTensorGPU)
 
-    # Create time-space components
-    for i in range(2, 5):
-        metricTensor[(1, i)] = beta[i - 2]
-        metricTensor[(i, 1)] = beta[i - 2]
+        # Compute on GPU
+        metric['scaling'] = np.array(metric['scaling'], dtype='float32')
+        if diffOrder == 'fourth':
+            enDenGPU = met2den(metricTensorGPU, metric['scaling'])
+        elif diffOrder == 'second':
+            enDenGPU = met2den2(metricTensorGPU, metric['scaling'])
 
-    # Create space-space components
-    for i in range(2, 5):
-        for j in range(2, 5):
-            metricTensor[(i, j)] = gamma[i - 2][j - 2]
+        # Gather results from GPU
+        energyTensor = [[np.array(component) for component in row] for row in enDenGPU]
 
-    # Verify the metric tensor
-    if not verifyTensor(metricTensor, threshold):
-        raise ValueError("Constructed metric tensor does not satisfy symmetry and signature criteria.")
+    else:
+        # Compute on CPU
+        if diffOrder == 'fourth':
+            energyTensor = met2den(metric['tensor'], metric.get('scaling', 1.0))
+        elif diffOrder == 'second':
+            energyTensor = met2den2(metric['tensor'], metric['scaling'])
 
-    return metricTensor
+    # Assign struct values
+    energy = {
+        'type': 'Stress-Energy',
+        'tensor': energyTensor,
+        'coords': metric['coords'],
+        'index': 'contravariant',
+        'order': diffOrder,
+        'name': metric['name'],
+        'date': np.datetime64('today')
+    }
+
+    return energy
