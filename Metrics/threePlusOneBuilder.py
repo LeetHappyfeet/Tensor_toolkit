@@ -1,6 +1,9 @@
 # Filename: threePlusOneBuilder.py
 import numpy as np
 from Metrics.verifyTensor import verifyTensor
+import logging
+
+logging.basicConfig(level=logging.INFO)
 
 def threePlusOneBuilder(alpha, beta, gamma, threshold=1e-10):
     """
@@ -15,14 +18,35 @@ def threePlusOneBuilder(alpha, beta, gamma, threshold=1e-10):
     Returns:
     metricTensor (dict): Metric tensor represented as a dictionary.
     """
+    
+    logging.info(f"Shape of alpha: {alpha.shape}")
+    for i in range(3):
+        logging.info(f"Shape of beta[{i}]: {beta[i].shape}")
+    
+    for i in range(3):
+        for j in range(3):
+            logging.info(f"Shape of gamma[{i}][{j}]: {gamma[i][j].shape}")
+            logging.info(f"gamma[{i}][{j}] sample values: {gamma[i][j][0,0,0]}")
 
-    # Set spatial components
-    gamma_up = [np.linalg.inv(g) for g in gamma]
+    gamma_up = []
+
+    for idx, g in enumerate(gamma):
+        dets = np.linalg.det(g)
+        logging.info(f"Determinant of gamma[{idx}]: {dets}")
+        
+        if np.any(np.abs(dets) < threshold):
+            logging.error(f"Singular matrix detected at gamma[{idx}] with determinant {dets}.")
+            raise np.linalg.LinAlgError(f"Singular matrix detected at gamma[{idx}] with determinant {dets}.")
+        
+        # Additional check to print out determinant values before raising error
+        logging.info(f"Determinant values of gamma[{idx}]: {dets}")
+        
+        gamma_up.append(np.linalg.inv(g))
 
     # Find gridSize
     s = alpha.shape
 
-    # Caluculate beta_i
+    # Calculate beta_i
     beta_up = [np.zeros(s) for _ in range(3)]
     for i in range(3):
         for j in range(3):
