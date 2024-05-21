@@ -1,7 +1,7 @@
 import numpy as np
 from Metrics.verifyTensor import verifyTensor
 from solver.met2den import met2den 
-from solver.metric_definition import metric
+
 def getEnergyTensor(metric, tryGPU=False, diffOrder='fourth'):
     """
     Converts the metric into the stress energy tensor
@@ -15,10 +15,14 @@ def getEnergyTensor(metric, tryGPU=False, diffOrder='fourth'):
     - energy: A dictionary representing the energy tensor
     """
 
-
     # Handle default input arguments
     if diffOrder not in ['second', 'fourth']:
         raise ValueError("Order Flag Not Specified Correctly. Options: 'second' or 'fourth'")
+
+    # Check if the metric object is None
+    if metric is None:
+        print("Error: Metric object is None.")
+        return None
 
     # Check that the metric is verified and covariant
     if not verifyTensor(metric, 1):
