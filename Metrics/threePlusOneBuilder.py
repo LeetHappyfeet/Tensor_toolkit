@@ -1,9 +1,15 @@
-# Filename: threePlusOneBuilder.py
 import numpy as np
 from Metrics.verifyTensor import verifyTensor
 import logging
 
 logging.basicConfig(level=logging.INFO)
+
+def is_symmetric(tensor, tol=1e-10):
+    for (i, j), value in tensor.items():
+        if not np.allclose(value, tensor.get((j, i), np.zeros_like(value)), atol=tol):
+            logging.error(f"Tensor component {(i, j)} is not symmetric with {(j, i)}.")
+            return False
+    return True
 
 def threePlusOneBuilder(alpha, beta, gamma, threshold=1e-10):
     """
@@ -35,13 +41,10 @@ def threePlusOneBuilder(alpha, beta, gamma, threshold=1e-10):
         logging.info(f"Determinant of gamma[{idx}]: {dets}")
         
         if np.any(np.abs(dets) < threshold):
-            logging.error(f"Singular matrix detected at gamma[{idx}] with determinant {dets}.")
-            raise np.linalg.LinAlgError(f"Singular matrix detected at gamma[{idx}] with determinant {dets}.")
-        
-        # Additional check to print out determinant values before raising error
-        logging.info(f"Determinant values of gamma[{idx}]: {dets}")
-        
-        gamma_up.append(np.linalg.inv(g))
+            logging.warning(f"Singular matrix detected at gamma[{idx}] with determinant {dets}. Using pseudoinverse instead.")
+            gamma_up.append(np.linalg.pinv(g))  # Use pseudo-inverse for singular matrices
+        else:
+            gamma_up.append(np.linalg.inv(g))
 
     # Find gridSize
     s = alpha.shape
@@ -67,8 +70,17 @@ def threePlusOneBuilder(alpha, beta, gamma, threshold=1e-10):
         for j in range(2, 5):
             metricTensor[(i, j)] = gamma[i - 2][j - 2]
 
-    # Verify the metric tensor
+    # Log the metric tensor before verification
+    logging.info(f"Constructed metric tensor: {metricTensor}")
+
+    # Verify the symmetry of the metric tensor
+    if not is_symmetric(metricTensor, threshold):
+        logging.error("Constructed metric tensor is not symmetric.")
+        raise ValueError("Constructed metric tensor does not satisfy symmetry criteria.")
+
+    # Verify the metric tensor using external function
     if not verifyTensor(metricTensor, threshold):
-        raise ValueError("Constructed metric tensor does not satisfy symmetry and signature criteria.")
+        logging.error(f"Metric tensor failed verification: {metricTensor}")
+        raise ValueError("Constructed metric tensor does not satisfy signature criteria.")
 
     return metricTensor

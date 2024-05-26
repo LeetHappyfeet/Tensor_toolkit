@@ -82,10 +82,15 @@ def metricGet_AlcubierreComoving(gridSize, worldCenter, v, R, sigma, gridScale):
                     idx += 1
 
         # Make tensor from the 3+1 functions
-        metric['tensor'] = threePlusOneBuilder(alpha, beta, gamma)
+        metric_tensor = threePlusOneBuilder(alpha, beta, gamma)
+        
+        if metric_tensor is None:
+            raise ValueError("Unable to construct metric tensor.")
+
+        metric['tensor'] = metric_tensor
 
         return metric
-    except np.linalg.LinAlgError as e:
-        logging.error(f"Singular matrix encountered: {e}")
+    except Exception as e:
+        logging.error(f"Error occurred while computing the metric: {e}")
         logging.error(traceback.format_exc())
         return None
