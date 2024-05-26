@@ -212,52 +212,49 @@ ERROR:root:Metric tensor failed verification: {(1, 1): array([[[[-0.999975  , -0
 Why does this show up with numbers near zero or .5? Why would this happen? We be close to a solution. 
 
 The issue you're encountering with the metric tensor verification is related to the numerical values being close to zero or 0.5 in some entries. Let's break down the possible reasons and what they signify.
-Understanding the Metric Tensor
 
+### Understanding the Metric Tensor
 The metric tensor in a physical or mathematical context, especially in general relativity or differential geometry, is a tensor that defines the distance between two points in a space. For a proper metric tensor, certain properties must be upheld:
 
-    Symmetry: The metric tensor should be symmetric, i.e., gij=gjigij​=gji​.
-    Positive-definiteness: For spatial metrics, gijvivjgij​vivj should be positive for any non-zero vector vv.
-    Consistency with the manifold's dimensionality: The tensor should respect the dimensions and coordinate system of the space it describes.
+1. **Symmetry**: The metric tensor should be symmetric, i.e., \( g_{ij} = g_{ji} \).
+2. **Positive-definiteness**: For spatial metrics, \( g_{ij} v^i v^j \) should be positive for any non-zero vector \( v \).
+3. **Consistency with the manifold's dimensionality**: The tensor should respect the dimensions and coordinate system of the space it describes.
 
-Analyzing Your Metric Tensor
+### Analyzing Your Metric Tensor
+In your tensor, elements like \( (1,1) \), \( (1,2) \), and \( (2,1) \) have entries that are close to zero or 0.5. Here are potential reasons why this might happen:
 
-In your tensor, elements like (1,1)(1,1), (1,2)(1,2), and (2,1)(2,1) have entries that are close to zero or 0.5. Here are potential reasons why this might happen:
+1. **Numerical Precision and Stability**:
+   - **Near-zero Values**: Values close to zero could indicate numerical precision issues. These can arise from calculations that involve subtraction of nearly equal numbers, leading to a loss of significance.
+   - **Values near 0.5**: Depending on the context, such values might be the result of averaging or intermediate steps that didn't correctly account for scale or normalization factors.
 
-    Numerical Precision and Stability:
-        Near-zero Values: Values close to zero could indicate numerical precision issues. These can arise from calculations that involve subtraction of nearly equal numbers, leading to a loss of significance.
-        Values near 0.5: Depending on the context, such values might be the result of averaging or intermediate steps that didn't correctly account for scale or normalization factors.
+2. **Coordinate System and Basis Choice**:
+   - If the metric tensor is being computed in a coordinate system or basis that is not orthonormal, or if the coordinates are improperly scaled, this can lead to unexpected entries.
+   - Verify the coordinate system and the basis vectors used. For example, in an orthonormal basis, diagonal elements should typically reflect the scale (e.g., 1 for normalized units).
 
-    Coordinate System and Basis Choice:
-        If the metric tensor is being computed in a coordinate system or basis that is not orthonormal, or if the coordinates are improperly scaled, this can lead to unexpected entries.
-        Verify the coordinate system and the basis vectors used. For example, in an orthonormal basis, diagonal elements should typically reflect the scale (e.g., 1 for normalized units).
+3. **Implementation Bugs**:
+   - There might be a bug in the code that calculates or assembles the metric tensor. Ensure that the algorithm correctly handles indices and performs necessary mathematical operations accurately.
+   - Check if there's any inadvertent overwriting or memory corruption affecting the tensor values.
 
-    Implementation Bugs:
-        There might be a bug in the code that calculates or assembles the metric tensor. Ensure that the algorithm correctly handles indices and performs necessary mathematical operations accurately.
-        Check if there's any inadvertent overwriting or memory corruption affecting the tensor values.
+4. **Initial Conditions or Boundary Values**:
+   - The initial conditions or boundary values in a simulation or computational framework might be causing these entries. Ensure that boundary conditions are consistent with the expected geometry and physics.
 
-    Initial Conditions or Boundary Values:
-        The initial conditions or boundary values in a simulation or computational framework might be causing these entries. Ensure that boundary conditions are consistent with the expected geometry and physics.
+### Steps to Diagnose and Fix
 
-Steps to Diagnose and Fix
+1. **Print Intermediate Results**: Trace through the steps of your calculation and print intermediate results to identify where values start deviating unexpectedly.
+2. **Validate Input Data**: Ensure all input data to the metric tensor computation is correct and within expected ranges.
+3. **Check Coordinate Transformations**: If the tensor involves transformations between coordinate systems, validate those transformations.
+4. **Increase Precision**: If working with floating-point arithmetic, consider using higher precision (e.g., double instead of float) to see if the issue persists.
+5. **Simplified Tests**: Create simplified test cases with known results to verify that the metric tensor calculation works correctly in controlled scenarios.
 
-    Print Intermediate Results: Trace through the steps of your calculation and print intermediate results to identify where values start deviating unexpectedly.
-    Validate Input Data: Ensure all input data to the metric tensor computation is correct and within expected ranges.
-    Check Coordinate Transformations: If the tensor involves transformations between coordinate systems, validate those transformations.
-    Increase Precision: If working with floating-point arithmetic, consider using higher precision (e.g., double instead of float) to see if the issue persists.
-    Simplified Tests: Create simplified test cases with known results to verify that the metric tensor calculation works correctly in controlled scenarios.
-
-Example Check
-
+### Example Check
 For a 2D space metric tensor, in a Cartesian coordinate system, a flat space metric tensor should look like:
 
-gij=(1001)gij​=(10​01​)
+\[ g_{ij} = \begin{pmatrix} 1 & 0 \\ 0 & 1 \end{pmatrix} \]
 
 If you're seeing values close to 0.5 instead of 1 or 0, investigate:
 
-    Any averaging or scaling applied during computation.
-    Consistency in the definition and use of basis vectors.
+- Any averaging or scaling applied during computation.
+- Consistency in the definition and use of basis vectors.
 
-Conclusion
-
+### Conclusion
 The unexpected values near zero or 0.5 likely stem from numerical precision issues, incorrect coordinate system handling, or bugs in the implementation. By systematically checking each step of the computation and validating against known benchmarks, you can identify and correct the source of the discrepancy.
