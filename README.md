@@ -1,10 +1,3 @@
-WARNING! 
-A major change was made because of the growing code base that will require fixing almost every file. The folder structure is now changed. All former functions that were tied to the program have been moved to the /analysis/ folder.
-this breaks stuff because many of the functions that were metrics are no longer going to be accessable to the functions in the /analysis folder until their locations are updated in the files. 
-
-As this project fleshes out we have had to make a major change to our folder layout. We still need a solver, units, and a visualizer. If you have any insight or free time please help us get this thing working.
-Sure, here's a sample README.md file for your "Tensor Toolkit" project:
-
 ```markdown
 # Tensor Toolkit
 
