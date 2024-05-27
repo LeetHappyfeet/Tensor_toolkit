@@ -1,5 +1,8 @@
 # Filename: setMinkowskiThreePlusOne.py
 import numpy as np
+import logging
+
+logging.basicConfig(level=logging.INFO)
 
 def setMinkowskiThreePlusOne(gridSize):
     """
@@ -22,5 +25,13 @@ def setMinkowskiThreePlusOne(gridSize):
 
     # Spatial terms gamma
     gamma = [[np.ones(gridSize) if i == j else np.zeros(gridSize) for j in range(3)] for i in range(3)]
+    
+    logging.info(f"Alpha shape: {alpha.shape}")
+    for i in range(3):
+        logging.info(f"Beta[{i}] shape: {beta[i].shape}")
+    for i in range(3):
+        for j in range(3):
+            logging.info(f"Gamma[{i}][{j}] shape: {gamma[i][j].shape}")
+            logging.info(f"Gamma[{i}][{j}] initial values: {gamma[i][j][0,0,0]}")
 
     return alpha, beta, gamma

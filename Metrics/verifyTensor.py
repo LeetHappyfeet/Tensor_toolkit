@@ -1,27 +1,39 @@
-# Filename: verifyTensor.py
 import numpy as np
+from scipy.sparse import coo_matrix
+import logging
 
-def verifyTensor(metricTensor, threshold):
+def verifyTensor(metricTensor, threshold=1e-10):
     """
-    Verifies the metric tensor based on symmetry and signature criteria.
+    Verifies that the metric tensor meets the expected criteria.
 
     Args:
     metricTensor (dict): Metric tensor represented as a dictionary.
     threshold (float): Threshold value for the signature criterion.
 
     Returns:
-    bool: True if the metric tensor is verified, False otherwise.
+    bool: True if the metric tensor is valid, False otherwise.
     """
-    # Convert the metric tensor dictionary to a numpy array
-    tensor = np.array([[metricTensor.get((i, j), 0) for j in range(1, 5)] for i in range(1, 5)])
+    logging.info(f"Verifying metric tensor: {metricTensor}")
 
-    # Check if the tensor is symmetric
-    if not np.array_equal(tensor, tensor.T):
-        return False
+    rows, cols, data = [], [], []
+    for key, value in metricTensor.items():
+        if len(key) != 2:
+            logging.error(f"Unexpected key in metricTensor: {key}")
+            raise ValueError(f"Unexpected key in metricTensor: {key}")
 
-    # Check the signature of the metric tensor
-    diag_elems = np.diag(tensor)
-    if any(diag_elems < -threshold) or any(diag_elems > threshold):
-        return False
+        (i, j) = key
+        flat_value = value.flatten()
+        index_shift = (i-1) * 4 + (j-1)
+        for idx, val in enumerate(flat_value):
+            rows.append(index_shift)
+            cols.append(idx)
+            data.append(val)
+
+    tensor_sparse = coo_matrix((data, (rows, cols)), shape=(16, len(data) // 16))
+
+    tol = max(threshold, 1e-10 * np.max(np.abs(data)))
+    for (i, j), value in metricTensor.items():
+        if not np.allclose(value, metricTensor.get((j, i), np.zeros_like(value)), atol=tol):
+            return False
 
     return True
