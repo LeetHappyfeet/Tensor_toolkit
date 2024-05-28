@@ -6,7 +6,8 @@
 # Stress-Energy Tensor Visualization
 
 This project provides a visualization tool for the stress-energy tensor of a given metric tensor in General Relativity. The visualization allows users to adjust input values and dynamically see the changes in the tensor components.
-![python_3ipoIVblvX](https://github.com/LeetHappyfeet/Tensor_toolkit/assets/138872496/f8811393-1f73-4690-a344-32cc53c0ce53)
+![Python4](https://github.com/LeetHappyfeet/Tensor_toolkit/assets/138872496/dc71cead-a2f3-47a6-b9fb-1bb4b01a3cc9)
+
 
 
 ## Features
