@@ -1,57 +1,96 @@
-```markdown
-# Tensor Toolkit
 
-Tensor Toolkit is a collection of Python tools and utilities for working with tensors in computational physics and general relativity simulations.
-This toolkit provides a set of functions to manipulate tensors, compute stress-energy tensors,
-generate vector fields, and perform other common operations used in tensor analysis.
 
-## Installation
 
-To use Tensor Toolkit, simply clone this repository to your local machine:
 
+
+# Stress-Energy Tensor Visualization
+
+This project provides a visualization tool for the stress-energy tensor of a given metric tensor in General Relativity. The visualization allows users to adjust input values and dynamically see the changes in the tensor components.
+![python_3ipoIVblvX](https://github.com/LeetHappyfeet/Tensor_toolkit/assets/138872496/f8811393-1f73-4690-a344-32cc53c0ce53)
+
+
+## Features
+
+- Compute the stress-energy tensor analytically for a given metric tensor.
+- Visualize multiple components of the stress-energy tensor.
+- Adjust input parameters using a graphical user interface (GUI) built with Tkinter.
+- Interactive plots using Matplotlib.
 
 ## Requirements
 
-- Python 3.6+
-- TensorFlow (for certain modules)
+- Python 3.x
+- SymPy
 - NumPy
+- Matplotlib
+- Tkinter
 
-Install the required packages using pip:
+## Installation
 
-```bash
-pip install -r requirements.txt
-```
+1. Clone the repository:
+   ```sh
+   git clone https://github.com/LeetHappyfeet/Tensor_toolkit/stress-energy-tensor-visualization.git
+   cd stress-energy-tensor-visualization
+   ```
+
+2. Install the required Python packages:
+   ```sh
+   pip install sympy numpy matplotlib
+   ```
 
 ## Usage
 
-The toolkit consists of several Python modules located in the `solver` and `analysis` directories. Each module contains functions related to a specific aspect of tensor analysis.
+1. Run the `visualizer.py` script to start the GUI:
+   ```sh
+   python visualizer.py
+   ```
 
-To use a specific function, import it into your Python script:
+2. Adjust the input parameters (t amplitude, x amplitude, y amplitude, z amplitude, xy coupling) using the provided entry fields.
+
+3. Click the "Update Plot" button to see the changes in the stress-energy tensor components.
+
+## Project Structure
+
+- `analyticalEnergyTensor.py`: Contains the function to compute the stress-energy tensor analytically.
+- `visualizer.py`: Main script to run the GUI and visualize the tensor components.
+- `README.md`: Project documentation.
+
+## Example
+
+Here's an example of how to use the `analyticalEnergyTensor` function directly in Python:
 
 ```python
-from solver.getEnergyTensor import getEnergyTensor
+import sympy as sp
+from analyticalEnergyTensor import analyticalEnergyTensor
 
-# Use the getEnergyTensor function
+# Define symbolic variables
+t, x, y, z = sp.symbols('t x y z')
+
+# Define a simple metric tensor
+g = sp.zeros(4, 4)
+g[0, 0] = -1
+g[1, 1] = 1 + 0.1 * sp.sin(x) * sp.sin(t)
+g[2, 2] = 1 + 0.1 * sp.sin(y) * sp.sin(t)
+g[3, 3] = 1 + 0.1 * sp.sin(z) * sp.sin(t)
+g[1, 2] = 0.05 * sp.cos(x) * sp.cos(y) * sp.cos(t)
+g[2, 1] = g[1, 2]  # Symmetric component
+
+# Define the coordinates
+coords = [t, x, y, z]
+
+# Compute the stress-energy tensor
+T_out = analyticalEnergyTensor(g, coords)
+
+# Print the stress-energy tensor
+print(T_out)
 ```
-
-Ensure that you have the necessary input data structures (e.g., metric tensors) before using the functions.
-
-## Modules
-
-- **solver**: Contains functions for computing stress-energy tensors, metric transformations, and related calculations.
-- **analysis**: Contains utilities for generating vector fields, performing tensor transformations, and other analysis tasks.
-
-## Examples
-
-The `examples` directory contains sample scripts demonstrating how to use various functions and modules within Tensor Toolkit. You can refer to these examples to understand how to integrate the toolkit into your own projects.
-
-## Contributing
-
-Contributions to Tensor Toolkit are welcome! If you find a bug, have a feature request, or want to contribute code, feel free to open an issue or submit a pull request.
 
 ## License
 
-This project is licensed under the GPL License.
+This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for more details.
+
+## Contributing
+
+Contributions are welcome! Please open an issue or submit a pull request for any changes.
+
+
 ```
-
-
