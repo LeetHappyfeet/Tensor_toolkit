@@ -1,8 +1,11 @@
 import numpy as np
-from solver.tools import ricciS, ricciT, einT, einE
+from solver.tools.ricciS import ricciS2
+from solver.tools.ricciT import ricciT2
+from solver.tools.einT import einT2
+from solver.tools.einE import einE
 from solver.tools.c4Inv import c4Inv2
 
-def met2den(gl, delta=None):
+def met2den(gl, delta=None, units=None):
     """
     Coverts a Cartesian metric tensor to the corresponding energy density tensor using the Einstein Field Equations
     
@@ -22,20 +25,22 @@ def met2den(gl, delta=None):
     # Handle default input arguments
     if delta is None:
         delta = [1, 1, 1, 1]
+    if units is None:
+        units = [1, 1, 1]
     
     # Calculate metric tensor inverse
-    gu = c4Inv(gl_np)
+    gu = c4Inv2(gl_np)
     
     # Calculate the Ricci tensor
-    R_munu = ricciT(gu, gl_np, delta)
+    R_munu = ricciT2(gu, gl_np, delta)
     
     # Calculate the Ricci scalar
-    R = ricciS(R_munu, gu)
+    R = ricciS2(R_munu, gu)
     
     # Calculate Einstein tensor
-    E = einT(R_munu, R, gl_np)
+    E = einT2(R_munu, R, gl_np)
     
     # Calculate Energy density
-    energy_density = einE(E, gu)
+    energy_density = einE(E, gu, units)
     
     return energy_density

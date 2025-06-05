@@ -1,5 +1,6 @@
 #Hey Heads Up!. The constants will need to be updated shortly to deal with quantum physics. While they are constants, they actually aren't. This is an assumption.
-#Called by met2den.py
+# Called by met2den.py
+from math import pi
 
 def einE(E, gu, units):
     # Constants
