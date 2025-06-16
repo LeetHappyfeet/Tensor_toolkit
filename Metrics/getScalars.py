@@ -45,3 +45,4 @@ def three_plus_one_decomposer(metric):
     alpha = tf.sqrt(beta_up[0] * beta_down[0] + beta_up[1] * beta_down[1] + beta_up[2] * beta_down[2] - metric['tensor'][0][0])
 
     return alpha, beta_down, gamma_down, beta_up, gamma_up
+

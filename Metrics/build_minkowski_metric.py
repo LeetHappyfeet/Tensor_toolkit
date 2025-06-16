@@ -24,3 +24,4 @@ def build_minkowski_metric(grid_size, grid_scaling=None):
             metric[f"tensor_{i},{j}"] = val
 
     return metric
+

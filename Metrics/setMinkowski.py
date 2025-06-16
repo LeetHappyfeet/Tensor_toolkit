@@ -38,3 +38,4 @@ def setMinkowski(gridSize):
     metric[(4, 1)] = np.zeros(gridSize)
 
     return metric
+

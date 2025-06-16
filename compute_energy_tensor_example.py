@@ -38,3 +38,4 @@ energy_tensor = getEnergyTensor(metric, tryGPU=False, diffOrder='fourth')
 
 # Print the resulting stress-energy tensor
 print(energy_tensor)
+

@@ -1,3 +1,7 @@
+import numpy as np
+from solver.tools.takeFiniteDifference1_2 import takeFiniteDifference1_2
+from solver.tools.takeFiniteDifference2_2 import takeFiniteDifference2_2
+
 def ricciTMem2(gu, gl, delta):
     # Calculate the size of gl{1,1}
     s = np.shape(gl[0][0])
@@ -51,3 +55,4 @@ def ricciTMem2(gu, gl, delta):
     R_munu[3][2] = R_munu[2][3]
 
     return R_munu
+

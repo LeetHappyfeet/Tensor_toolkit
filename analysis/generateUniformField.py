@@ -42,3 +42,5 @@ def getEvenPointsOnSphere(radius, numPoints, dim):
 
     spherical_points = np.stack([x, y, z], axis=-1)
     return tf.convert_to_tensor(spherical_points, dtype=tf.float32)
+
+

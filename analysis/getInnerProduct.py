@@ -1,6 +1,7 @@
 # Filename: getInnerProduct.py
 import numpy as np
-from verifyTensor import verifyTensor
+from solver.verifyTensor import verifyTensor
+from solver.tools.c4Inv import c4Inv2 as c4Inv
 
 ##ensure that you have defined the verifyTensor and c4Inv functions or integrate their functionalities within this code.
 ##Also, make sure that the input vecA, vecB, and Metric are dictionaries containing the appropriate keys.
@@ -38,3 +39,4 @@ def getInnerProduct(vecA, vecB, Metric):
                 innerprod += vecA['field'][mu] * vecB['field'][nu] * Metric['tensor'][mu][nu]
 
     return innerprod
+

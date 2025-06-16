@@ -1,6 +1,7 @@
 # Filename: getTrace
 import numpy as np
-from verifyTensor import verifyTensor
+from solver.verifyTensor import verifyTensor
+from solver.tools.c4Inv import c4Inv2 as c4Inv
 
 def getTrace(tensor, metric):
     """
@@ -28,3 +29,4 @@ def getTrace(tensor, metric):
             Trace += metric['tensor'][a][b] * tensor['tensor'][a][b]
 
     return Trace
+

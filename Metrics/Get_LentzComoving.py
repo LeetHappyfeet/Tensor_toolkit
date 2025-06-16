@@ -83,3 +83,4 @@ def getWarpFactorByRegion(xIn, yIn, sizeScale):
     WFY = tf.sign(yIn) * WFY
 
     return WFX, WFY
+

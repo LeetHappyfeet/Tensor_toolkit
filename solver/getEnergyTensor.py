@@ -66,3 +66,4 @@ def getEnergyTensor(metric, tryGPU=False, diffOrder='fourth'):
     }
 
     return energy
+

@@ -84,3 +84,4 @@ def threePlusOneBuilder(alpha, beta, gamma, threshold=1e-10):
         raise ValueError("Constructed metric tensor does not satisfy signature criteria.")
 
     return metricTensor
+
