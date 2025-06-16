@@ -94,3 +94,4 @@ def metricGet_AlcubierreComoving(gridSize, worldCenter, v, R, sigma, gridScale):
         logging.error(f"Error occurred while computing the metric: {e}")
         logging.error(traceback.format_exc())
         return None
+

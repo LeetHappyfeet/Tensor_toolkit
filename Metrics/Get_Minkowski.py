@@ -36,3 +36,4 @@ def metricGet_Minkowski(gridSize, gridScaling):
                 metric['tensor'][(i, j)] = tf.zeros(gridSize)
 
     return metric
+

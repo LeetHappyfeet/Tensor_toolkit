@@ -1,3 +1,6 @@
+import numpy as np
+import torch
+
 def takeFiniteDifference2_2(A, k1, k2, delta):
     s = np.shape(A)
 
@@ -66,3 +69,4 @@ def takeFiniteDifference2_2(A, k1, k2, delta):
                             A[:, :, x_1, y_1] - A[:, :, x_1, y1] - A[:, :, x1, y_1] + A[:, :, x1, y1])
 
     return B
+

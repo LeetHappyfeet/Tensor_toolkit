@@ -30,3 +30,4 @@ def getEvenPointsOnSphere(R, numberOfPoints, useGPU=False):
         Vector[2, i] = R * np.cos(phi)
 
     return Vector
+

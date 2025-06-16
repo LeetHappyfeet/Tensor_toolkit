@@ -46,5 +46,7 @@ g = np.array([[1, 0, 0, 0],
               [0, 0, -1, 0],
               [0, 0, 0, -1]])
 
-M = get_eulerian_transformation_matrix(g)
-print(M)
+if __name__ == "__main__":
+    M = get_eulerian_transformation_matrix(g)
+    print(M)
+

@@ -1,3 +1,9 @@
+from solver.tools.c4Inv import c4Inv2
+from solver.tools.ricciT import ricciT2
+from solver.tools.ricciS import ricciS2
+from solver.tools.einT import einT2
+from solver.tools.einE import einE
+
 def met2den2(metricTensor, delta=None, units=None):
     # Set default values if not provided
     if delta is None:
@@ -25,3 +31,4 @@ def met2den2(metricTensor, delta=None, units=None):
 
 # Example usage:
 # energyDensity = met2den2(metricTensor)
+

@@ -1,3 +1,6 @@
+import numpy as np
+import torch
+
 def takeFiniteDifference1_2(A, k, delta):
     s = np.shape(A)
 
@@ -27,3 +30,4 @@ def takeFiniteDifference1_2(A, k, delta):
             B[:, :, :, -1] = B[:, :, :, -2]
 
     return B
+

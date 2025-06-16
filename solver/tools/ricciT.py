@@ -1,3 +1,7 @@
+import numpy as np
+from solver.tools.takeFiniteDifference1_2 import takeFiniteDifference1_2
+from solver.tools.takeFiniteDifference2_2 import takeFiniteDifference2_2
+
 def ricciT2(gu, gl, delta):
     # Initialize Ricci tensor
     R_munu = [[None for _ in range(4)] for _ in range(4)]
@@ -63,3 +67,4 @@ def ricciT2(gu, gl, delta):
 
 # Example usage:
 # R_munu = ricciT2(gu, gl, delta)
+

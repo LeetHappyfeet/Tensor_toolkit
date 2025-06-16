@@ -35,3 +35,4 @@ def setMinkowskiThreePlusOne(gridSize):
             logging.info(f"Gamma[{i}][{j}] initial values: {gamma[i][j][0,0,0]}")
 
     return alpha, beta, gamma
+
