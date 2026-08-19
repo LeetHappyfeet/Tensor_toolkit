@@ -1,0 +1,13 @@
+{
+  "name": "de Sitter flat slicing",
+  "coordinates": ["t", "x", "y", "z"],
+  "signature": "-+++",
+  "units": "geometrized",
+  "metric": "ds^2 = -dt^2 + exp(2 H t) (dx^2 + dy^2 + dz^2)",
+  "expected": {
+    "ricci_tensor": "R_mu_nu = 3 H^2 g_mu_nu",
+    "ricci_scalar": "R = 12 H^2",
+    "einstein_tensor": "G_mu_nu = -3 H^2 g_mu_nu"
+  },
+  "note": "This validates a known nonzero Einstein tensor. With Lambda omitted from the left side of Tensor Toolkit's Einstein equation, the effective stress-energy is T_mu_nu = G_mu_nu/(8*pi) in geometrized units."
+}
