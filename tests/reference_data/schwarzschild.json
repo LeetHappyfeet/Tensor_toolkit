@@ -1,0 +1,53 @@
+{
+  "name": "Schwarzschild exterior vacuum",
+  "coordinates": ["t", "r", "theta", "phi"],
+  "signature": "-+++",
+  "units": "geometrized",
+  "parameters": {
+    "M": 1.0,
+    "schwarzschild_radius": 2.0
+  },
+  "domain": {
+    "r_min": 6.0,
+    "r_max": 10.0,
+    "theta_min": 0.7,
+    "theta_max": 2.4,
+    "note": "Exterior region only; excludes the horizon and polar coordinate singularities."
+  },
+  "metric": {
+    "g_tt": "-(1 - 2*M/r)",
+    "g_rr": "1/(1 - 2*M/r)",
+    "g_thetatheta": "r^2",
+    "g_phiphi": "r^2*sin(theta)^2"
+  },
+  "expected": {
+    "ricci_tensor": "0",
+    "ricci_scalar": "0",
+    "einstein_tensor": "0",
+    "stress_energy_tensor": "0",
+    "riemann_component": {
+      "indices": [1, 2, 1, 2],
+      "notation": "R^r_{ theta r theta}",
+      "formula": "-M/r",
+      "derivation": "Analytic derivation using Tensor Toolkit's documented Riemann sign convention."
+    }
+  },
+  "provenance": [
+    {
+      "title": "Catalogue of Spacetimes",
+      "authors": "Thomas Mueller; Frank Grave",
+      "arxiv": "0904.4184",
+      "role": "Published spacetime catalogue and Schwarzschild reference."
+    },
+    {
+      "title": "EinsteinPy predefined Schwarzschild metric",
+      "url": "https://docs.einsteinpy.org/en/stable/api/symbolic/predefined/full_list.html",
+      "role": "Independent software implementation of the Schwarzschild exterior metric."
+    },
+    {
+      "title": "EinsteinPy symbolic user guide",
+      "url": "https://docs.einsteinpy.org/en/latest/user_guide.html",
+      "role": "Independent symbolic calculation showing a zero Einstein tensor for Schwarzschild."
+    }
+  ]
+}
