@@ -1,4 +1,4 @@
-"""Headless experiment definition and execution for spacetime calculations."""
+"""Headless experiment definition and single-pass execution."""
 
 from __future__ import annotations
 
@@ -6,15 +6,16 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
+from tensor_toolkit.backends import require_backend
 from tensor_toolkit.metrics import Metric
-from tensor_toolkit.reference import (
+from tensor_toolkit.reference.geometry import (
     christoffel_symbols,
-    einstein_tensor,
+    einstein_from_ricci,
     inverse_metric,
-    ricci_scalar,
-    ricci_tensor,
-    riemann_tensor,
-    stress_energy_tensor,
+    ricci_from_riemann,
+    ricci_scalar_from_ricci,
+    riemann_from_christoffel,
+    stress_energy_from_einstein,
 )
 
 SUPPORTED_OUTPUTS = frozenset({
@@ -43,6 +44,7 @@ class Experiment:
     axes: tuple[Axis, Axis, Axis, Axis]
     outputs: frozenset[str] = field(default_factory=lambda: frozenset({"metric", "einstein"}))
     stress_energy_units: str = "geometrized"
+    backend: str = "cpu"
 
     def coordinates(self) -> tuple[np.ndarray, ...]:
         vectors = tuple(axis.values() for axis in self.axes)
@@ -62,8 +64,8 @@ class ExperimentResult:
     metadata: dict[str, object]
 
 
-
 def run_experiment(experiment: Experiment) -> ExperimentResult:
+    require_backend(experiment.backend)
     unknown = set(experiment.outputs) - SUPPORTED_OUTPUTS
     if unknown:
         raise ValueError(f"unsupported experiment outputs: {sorted(unknown)}")
@@ -74,23 +76,49 @@ def run_experiment(experiment: Experiment) -> ExperimentResult:
     metric = experiment.metric.evaluate(coordinate_grid)
     fields: dict[str, np.ndarray] = {}
 
+    def need(*names: str) -> bool:
+        return any(name in experiment.outputs for name in names)
+
     if "metric" in experiment.outputs:
         fields["metric"] = metric
+
+    inverse = inverse_metric(metric) if need(
+        "inverse_metric", "christoffel", "riemann", "ricci",
+        "ricci_scalar", "einstein", "stress_energy"
+    ) else None
     if "inverse_metric" in experiment.outputs:
-        fields["inverse_metric"] = inverse_metric(metric)
+        fields["inverse_metric"] = inverse
+
+    christoffel = christoffel_symbols(metric, spacings) if need(
+        "christoffel", "riemann", "ricci", "ricci_scalar", "einstein", "stress_energy"
+    ) else None
     if "christoffel" in experiment.outputs:
-        fields["christoffel"] = christoffel_symbols(metric, spacings)
+        fields["christoffel"] = christoffel
+
+    riemann = riemann_from_christoffel(christoffel, spacings) if need(
+        "riemann", "ricci", "ricci_scalar", "einstein", "stress_energy"
+    ) else None
     if "riemann" in experiment.outputs:
-        fields["riemann"] = riemann_tensor(metric, spacings)
+        fields["riemann"] = riemann
+
+    ricci = ricci_from_riemann(riemann) if need(
+        "ricci", "ricci_scalar", "einstein", "stress_energy"
+    ) else None
     if "ricci" in experiment.outputs:
-        fields["ricci"] = ricci_tensor(metric, spacings)
+        fields["ricci"] = ricci
+
+    scalar = ricci_scalar_from_ricci(metric, ricci) if need(
+        "ricci_scalar", "einstein", "stress_energy"
+    ) else None
     if "ricci_scalar" in experiment.outputs:
-        fields["ricci_scalar"] = ricci_scalar(metric, spacings)
+        fields["ricci_scalar"] = scalar
+
+    einstein = einstein_from_ricci(metric, ricci) if need("einstein", "stress_energy") else None
     if "einstein" in experiment.outputs:
-        fields["einstein"] = einstein_tensor(metric, spacings)
+        fields["einstein"] = einstein
     if "stress_energy" in experiment.outputs:
-        fields["stress_energy"] = stress_energy_tensor(
-            metric, spacings, units=experiment.stress_energy_units
+        fields["stress_energy"] = stress_energy_from_einstein(
+            einstein, units=experiment.stress_energy_units
         )
 
     return ExperimentResult(
@@ -102,6 +130,7 @@ def run_experiment(experiment: Experiment) -> ExperimentResult:
             "spacings": spacings,
             "shape": metric.shape[2:],
             "stress_energy_units": experiment.stress_energy_units,
+            "backend": "cpu",
         },
     )
 
