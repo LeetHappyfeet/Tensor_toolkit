@@ -1,97 +1,118 @@
+# Tensor Toolkit
 
+Tensor Toolkit is an experimental scientific-computing package for calculating and inspecting general-relativity tensor fields on four-dimensional coordinate grids.
 
+The current development direction is a validated CPU reference pipeline plus a metric tensor simulator. Legacy symbolic, plotting, and GPU-era code remains in the repository for migration/reference purposes, but it is not the authoritative execution path.
 
+## Current GR pipeline
 
+The supported reference path is:
 
-# Stress-Energy Tensor Visualization
+```text
+g_cov
+  -> g_contra
+  -> Christoffel symbols
+  -> Riemann tensor
+  -> Ricci tensor
+  -> Ricci scalar
+  -> Einstein tensor
+  -> stress-energy tensor
+```
 
-This project provides a visualization tool for the stress-energy tensor of a given metric tensor in General Relativity. The visualization allows users to adjust input values and dynamically see the changes in the tensor components.
-![Python4](https://github.com/LeetHappyfeet/Tensor_toolkit/assets/138872496/dc71cead-a2f3-47a6-b9fb-1bb4b01a3cc9)
+Tensor conventions, constants, validation, and experiment execution live in the installable `tensor_toolkit` package.
 
+The supported backend is CPU / NumPy `float64`. GPU execution is intentionally disabled until a real independently validated GPU backend is implemented.
 
+## Development installation
 
-## Features
+Python 3.10 or newer is required.
 
-- Compute the stress-energy tensor analytically for a given metric tensor.
-- Visualize multiple components of the stress-energy tensor.
-- Adjust input parameters using a graphical user interface (GUI) built with Tkinter.
-- Interactive plots using Matplotlib.
+```text
+git clone --branch Development https://github.com/LeetHappyfeet/Tensor_toolkit.git Tensor_toolkit-dev
+cd Tensor_toolkit-dev
+python -m pip install -e .
+```
 
-## Requirements
+On Windows, Miniconda/Conda environments work well. The desktop simulator uses Tkinter and Matplotlib.
 
-- Python 3.x
-- SymPy
-- NumPy
-- Matplotlib
-- Tkinter
+## Command line
 
-## Installation
+Check the installation:
 
-1. Clone the repository:
-   ```sh
-   git clone https://github.com/LeetHappyfeet/Tensor_toolkit/stress-energy-tensor-visualization.git
-   cd stress-energy-tensor-visualization
-   ```
+```text
+tensor-toolkit doctor
+tensor-toolkit list
+```
 
-2. Install the required Python packages:
-   ```sh
-   pip install sympy numpy matplotlib
-   ```
+Run reference experiments:
 
-## Usage
+```text
+tensor-toolkit run minkowski
+tensor-toolkit run de-sitter
+tensor-toolkit run alcubierre --points 7
+```
 
-1. Run the `visualizer.py` script to start the GUI:
-   ```sh
-   python visualizer.py
-   ```
+Save and inspect results:
 
-2. Adjust the input parameters (t amplitude, x amplitude, y amplitude, z amplitude, xy coupling) using the provided entry fields.
+```text
+tensor-toolkit run de-sitter --points 7 --output results/de-sitter7
+tensor-toolkit inspect results/de-sitter7
+tensor-toolkit inspect results/de-sitter7 --field einstein --center
+```
 
-3. Click the "Update Plot" button to see the changes in the stress-energy tensor components.
+Run a resolution study:
 
-## Project Structure
+```text
+tensor-toolkit convergence de-sitter --points 5 7 9
+tensor-toolkit convergence alcubierre --points 5 7 9
+```
 
-- `analyticalEnergyTensor.py`: Contains the function to compute the stress-energy tensor analytically.
-- `visualizer.py`: Main script to run the GUI and visualize the tensor components.
-- `README.md`: Project documentation.
+## Metric Tensor Simulator
 
-## Example
+Launch the desktop simulator with:
 
-Here's an example of how to use the `analyticalEnergyTensor` function directly in Python:
+```text
+tensor-toolkit visualize
+```
 
-```python
-import sympy as sp
-from analyticalEnergyTensor import analyticalEnergyTensor
+or, from a repository checkout:
 
-# Define symbolic variables
-t, x, y, z = sp.symbols('t x y z')
+```text
+python visualizer.py
+```
 
-# Define a simple metric tensor
-g = sp.zeros(4, 4)
-g[0, 0] = -1
-g[1, 1] = 1 + 0.1 * sp.sin(x) * sp.sin(t)
-g[2, 2] = 1 + 0.1 * sp.sin(y) * sp.sin(t)
-g[3, 3] = 1 + 0.1 * sp.sin(z) * sp.sin(t)
-g[1, 2] = 0.05 * sp.cos(x) * sp.cos(y) * sp.cos(t)
-g[2, 1] = g[1, 2]  # Symmetric component
+The visualizer is now a front end to the same `run_experiment()` pipeline used by the CLI. It no longer constructs a separate symbolic metric or calls the legacy `analyticalEnergyTensor.py` implementation.
 
-# Define the coordinates
-coords = [t, x, y, z]
+The current viewer supports:
 
-# Compute the stress-energy tensor
-T_out = analyticalEnergyTensor(g, coords)
+- selecting a registered metric (Minkowski is the default baseline),
+- editing metric parameters,
+- setting grid resolution and uniform coordinate extent,
+- viewing `metric`, `inverse_metric`, `ricci`, `einstein`, and `stress_energy` rank-2 fields,
+- selecting tensor components and two-dimensional coordinate slices,
+- inspecting the complete 4x4 tensor at the grid center,
+- seeing stored numerical validation results,
+- saving and reopening the same NPZ/JSON result format used by the CLI.
 
-# Print the stress-energy tensor
-print(T_out)
+See `docs/VISUALIZER.md` for details.
+
+## Numerical status
+
+Tensor Toolkit is still research/development software. A successful run is not the same thing as a validated physical result.
+
+Minkowski vacuum is the basic exact sanity check. Curved metrics are being used for analytic and convergence validation. The CLI and GUI surface numerical symmetry warnings rather than hiding them.
+
+The current simulator samples a metric field over `(t, x, y, z)`. It is not yet a full numerical-relativity evolution code: it does not evolve ADM/BSSN initial data or self-consistently couple moving matter back into spacetime.
+
+## Tests
+
+Install test dependencies and run:
+
+```text
+python -m pip install -e ".[test]"
+python -m pytest
 ```
 
 ## License
 
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for more details.
-
-## Contributing
-
-Contributions are welcome! Please open an issue or submit a pull request for any changes.
-
-
-```
+See the repository license files for the applicable project license.
