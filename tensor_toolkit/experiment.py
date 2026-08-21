@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 import numpy as np
 
 from tensor_toolkit.backends import require_backend
+from tensor_toolkit.diagnostics import result_diagnostics
 from tensor_toolkit.metrics import Metric
 from tensor_toolkit.reference.geometry import (
     christoffel_symbols,
@@ -131,6 +132,7 @@ def run_experiment(experiment: Experiment) -> ExperimentResult:
             "shape": metric.shape[2:],
             "stress_energy_units": experiment.stress_energy_units,
             "backend": "cpu",
+            "diagnostics": result_diagnostics(metric, fields),
         },
     )
 
