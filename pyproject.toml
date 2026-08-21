@@ -15,6 +15,11 @@ test = ["pytest>=7.4"]
 [project.scripts]
 tensor-toolkit = "tensor_toolkit.cli:main"
 
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["tensor_toolkit*"]
+exclude = ["tests*", "old*", "analysis*", "experiments*", "visualizer*", "solver*", "Metrics*", "units*"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
