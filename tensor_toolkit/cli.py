@@ -14,18 +14,8 @@ from tensor_toolkit.registry import builtins, configure_grid, get_experiment
 
 
 def _add_grid_arguments(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument(
-        "--points",
-        type=int,
-        default=None,
-        help="points per t/x/y/z axis (minimum 3)",
-    )
-    parser.add_argument(
-        "--extent",
-        type=float,
-        default=None,
-        help="uniform domain [-extent,+extent] on all axes",
-    )
+    parser.add_argument("--points", type=int, default=None, help="points per t/x/y/z axis (minimum 3)")
+    parser.add_argument("--extent", type=float, default=None, help="uniform domain [-extent,+extent] on all axes")
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -46,31 +36,15 @@ def _parser() -> argparse.ArgumentParser:
     inspect = sub.add_parser("inspect", help="inspect a saved experiment result")
     inspect.add_argument("path", help="saved result directory")
     inspect.add_argument("--field", default=None, help="show only one saved field")
-    inspect.add_argument(
-        "--center",
-        action="store_true",
-        help="print the selected rank-2 field at the grid center",
-    )
+    inspect.add_argument("--center", action="store_true", help="print the selected rank-2 field at the grid center")
 
-    convergence = sub.add_parser(
-        "convergence", help="run a grid-resolution Einstein-symmetry study"
-    )
+    convergence = sub.add_parser("convergence", help="run a grid-resolution Einstein-symmetry study")
     convergence.add_argument("experiment", choices=sorted(builtins()))
-    convergence.add_argument(
-        "--points",
-        type=int,
-        nargs="+",
-        required=True,
-        help="resolutions to test, e.g. 5 7 9",
-    )
-    convergence.add_argument(
-        "--extent",
-        type=float,
-        default=None,
-        help="fixed uniform domain extent",
-    )
+    convergence.add_argument("--points", type=int, nargs="+", required=True, help="resolutions to test, e.g. 5 7 9")
+    convergence.add_argument("--extent", type=float, default=None, help="fixed uniform domain extent")
     convergence.add_argument("--backend", default="cpu", choices=("cpu", "gpu"))
 
+    sub.add_parser("visualize", help="launch the desktop metric tensor simulator")
     sub.add_parser("doctor", help="show supported execution capabilities")
     return parser
 
@@ -96,24 +70,13 @@ def _print_validation(result) -> None:
     print(f"  status: {validation.get('status', 'UNKNOWN')}")
 
 
-def _configured_experiment(
-    name: str,
-    backend: str,
-    points: int | None = None,
-    extent: float | None = None,
-):
+def _configured_experiment(name, backend, points=None, extent=None):
     require_backend(backend)
     experiment = replace(get_experiment(name), backend=backend)
     return configure_grid(experiment, points=points, extent=extent)
 
 
-def _run(
-    name: str,
-    output: str | None,
-    backend: str,
-    points: int | None = None,
-    extent: float | None = None,
-) -> int:
+def _run(name, output, backend, points=None, extent=None) -> int:
     try:
         experiment = _configured_experiment(name, backend, points, extent)
     except (ValueError, NotImplementedError) as exc:
@@ -122,16 +85,10 @@ def _run(
 
     print(f"Running {name} on CPU...")
     print("  grid=" + "x".join(str(axis.points) for axis in experiment.axes))
-    print(
-        "  domain="
-        + ", ".join(f"[{axis.start:g},{axis.stop:g}]" for axis in experiment.axes)
-    )
+    print("  domain=" + ", ".join(f"[{axis.start:g},{axis.stop:g}]" for axis in experiment.axes))
     result = run_experiment(experiment)
     for key, value in result.fields.items():
-        print(
-            f"  {key:14s} shape={value.shape} "
-            f"max|value|={float(abs(value).max()):.6g}"
-        )
+        print(f"  {key:14s} shape={value.shape} max|value|={float(abs(value).max()):.6g}")
     _print_validation(result)
     if output:
         print(f"Saved: {save_result(result, output)}")
@@ -146,10 +103,7 @@ def _inspect(path: str, field: str | None = None, center: bool = False) -> int:
         return 2
 
     if field is not None and field not in fields:
-        print(
-            f"ERROR: field {field!r} not found; available: {', '.join(sorted(fields))}",
-            file=sys.stderr,
-        )
+        print(f"ERROR: field {field!r} not found; available: {', '.join(sorted(fields))}", file=sys.stderr)
         return 2
 
     selected = [field] if field else sorted(fields)
@@ -158,27 +112,18 @@ def _inspect(path: str, field: str | None = None, center: bool = False) -> int:
     print(f"Backend: {metadata.get('backend', 'unknown')}")
     print("Grid: " + " x ".join(str(len(axis)) for axis in axes))
     if axes:
-        print(
-            "Axes: "
-            + "; ".join(
-                f"{axis[0]:g}..{axis[-1]:g} ({len(axis)})" for axis in axes
-            )
-        )
+        print("Axes: " + "; ".join(f"{axis[0]:g}..{axis[-1]:g} ({len(axis)})" for axis in axes))
     print("Fields:")
     for name in selected:
         value = fields[name]
         diagnostics = field_diagnostics(value)
         print(
             f"  {name:14s} shape={value.shape} min={float(value.min()):.6g} "
-            f"max={float(value.max()):.6g} "
-            f"max|value|={diagnostics['max_abs']:.6g}"
+            f"max={float(value.max()):.6g} max|value|={diagnostics['max_abs']:.6g}"
         )
         symmetry = diagnostics.get("symmetry")
         if symmetry:
-            print(
-                f"    symmetry_abs={symmetry['absolute']:.6g} "
-                f"symmetry_rel={symmetry['relative']:.6g}"
-            )
+            print(f"    symmetry_abs={symmetry['absolute']:.6g} symmetry_rel={symmetry['relative']:.6g}")
         if center:
             if value.ndim < 2 or value.shape[:2] != (4, 4):
                 print("    center: unavailable for non-rank-2 tensor field")
@@ -194,32 +139,17 @@ def _inspect(path: str, field: str | None = None, center: bool = False) -> int:
     return 0
 
 
-def _convergence(
-    name: str,
-    point_counts: list[int],
-    extent: float | None,
-    backend: str,
-) -> int:
+def _convergence(name, point_counts, extent, backend) -> int:
     if any(points < 3 for points in point_counts):
-        print(
-            "ERROR: all convergence --points values must be at least 3",
-            file=sys.stderr,
-        )
+        print("ERROR: all convergence --points values must be at least 3", file=sys.stderr)
         return 2
     if len(set(point_counts)) != len(point_counts):
-        print(
-            "ERROR: convergence --points values must be unique",
-            file=sys.stderr,
-        )
+        print("ERROR: convergence --points values must be unique", file=sys.stderr)
         return 2
 
     try:
         require_backend(backend)
-        base = replace(
-            get_experiment(name),
-            backend=backend,
-            outputs=frozenset({"einstein"}),
-        )
+        base = replace(get_experiment(name), backend=backend, outputs=frozenset({"einstein"}))
         if extent is not None and extent <= 0:
             raise ValueError("--extent must be positive")
     except (ValueError, NotImplementedError) as exc:
@@ -235,8 +165,7 @@ def _convergence(
         symmetry = field_diagnostics(einstein)["symmetry"]
         spacing = max(result.metadata["spacings"])
         print(
-            f"{points:6d}  {spacing:11.6g}  "
-            f"{float(np.max(np.abs(einstein))):12.6g}  "
+            f"{points:6d}  {spacing:11.6g}  {float(np.max(np.abs(einstein))):12.6g}  "
             f"{symmetry['absolute']:12.6g}  {symmetry['relative']:12.6g}"
         )
     return 0
@@ -255,6 +184,15 @@ def _interactive() -> int:
     return _run(name, None, "cpu")
 
 
+def _visualize() -> int:
+    try:
+        from tensor_toolkit.gui import main as gui_main
+        return gui_main()
+    except RuntimeError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 2
+
+
 def main(argv=None) -> int:
     parser = _parser()
     args = parser.parse_args(argv)
@@ -271,21 +209,16 @@ def main(argv=None) -> int:
         print(
             "Backend: CPU/NumPy float64 (supported)\n"
             "GPU: future upgrade; explicitly unsupported in 0.2.0\n"
-            "Pipeline: metric -> inverse -> Christoffel -> Riemann -> "
-            "Ricci -> scalar -> Einstein -> stress-energy"
+            "Pipeline: metric -> inverse -> Christoffel -> Riemann -> Ricci -> scalar -> Einstein -> stress-energy"
         )
         return 0
     if args.command == "inspect":
         return _inspect(args.path, args.field, args.center)
     if args.command == "convergence":
         return _convergence(args.experiment, args.points, args.extent, args.backend)
-    return _run(
-        args.experiment,
-        args.output,
-        args.backend,
-        args.points,
-        args.extent,
-    )
+    if args.command == "visualize":
+        return _visualize()
+    return _run(args.experiment, args.output, args.backend, args.points, args.extent)
 
 
 if __name__ == "__main__":
