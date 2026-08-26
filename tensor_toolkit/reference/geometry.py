@@ -32,9 +32,9 @@ def metric_derivatives(metric: np.ndarray, spacings) -> np.ndarray:
     return np.stack([_partial(g, a, dx, field_ndim=2) for a in range(4)], axis=2)
 
 
-def christoffel_symbols(metric: np.ndarray, spacings) -> np.ndarray:
+def christoffel_symbols(metric: np.ndarray, spacings, *, inverse: np.ndarray | None = None) -> np.ndarray:
     g = validate_metric(metric)
-    gu = inverse_metric(g)
+    gu = inverse_metric(g) if inverse is None else np.asarray(inverse)
     dg = metric_derivatives(g, spacings)
     grid = g.shape[2:]
     gamma = np.zeros((4, 4, 4, *grid), dtype=np.float64)
@@ -67,6 +67,24 @@ def riemann_from_christoffel(gamma: np.ndarray, spacings) -> np.ndarray:
     return out
 
 
+def ricci_from_christoffel(gamma: np.ndarray, spacings) -> np.ndarray:
+    """Contract curvature directly into Ricci without materializing full Riemann."""
+    dx = tuple(float(x) for x in spacings)
+    grid = gamma.shape[3:]
+    ricci = np.zeros((4, 4, *grid), dtype=np.float64)
+    for sigma in range(4):
+        for nu in range(4):
+            value = np.zeros(grid, dtype=np.float64)
+            for rho in range(4):
+                value += _partial(gamma[rho, nu, sigma], rho, dx, field_ndim=0)
+                value -= _partial(gamma[rho, rho, sigma], nu, dx, field_ndim=0)
+                for lam in range(4):
+                    value += gamma[rho, rho, lam] * gamma[lam, nu, sigma]
+                    value -= gamma[rho, nu, lam] * gamma[lam, rho, sigma]
+            ricci[sigma, nu] = value
+    return ricci
+
+
 def riemann_tensor(metric: np.ndarray, spacings) -> np.ndarray:
     return riemann_from_christoffel(christoffel_symbols(metric, spacings), spacings)
 
@@ -76,25 +94,32 @@ def ricci_from_riemann(riemann: np.ndarray) -> np.ndarray:
 
 
 def ricci_tensor(metric: np.ndarray, spacings) -> np.ndarray:
-    return ricci_from_riemann(riemann_tensor(metric, spacings))
+    return ricci_from_christoffel(christoffel_symbols(metric, spacings), spacings)
 
 
-def ricci_scalar_from_ricci(metric: np.ndarray, ricci: np.ndarray) -> np.ndarray:
-    return np.einsum("mn...,mn...->...", inverse_metric(metric), ricci)
+def ricci_scalar_from_ricci(metric: np.ndarray, ricci: np.ndarray, *, inverse: np.ndarray | None = None) -> np.ndarray:
+    gu = inverse_metric(metric) if inverse is None else np.asarray(inverse)
+    return np.einsum("mn...,mn...->...", gu, ricci)
 
 
 def ricci_scalar(metric: np.ndarray, spacings) -> np.ndarray:
-    return ricci_scalar_from_ricci(metric, ricci_tensor(metric, spacings))
+    gu = inverse_metric(metric)
+    gamma = christoffel_symbols(metric, spacings, inverse=gu)
+    ricci = ricci_from_christoffel(gamma, spacings)
+    return ricci_scalar_from_ricci(metric, ricci, inverse=gu)
 
 
-def einstein_from_ricci(metric: np.ndarray, ricci: np.ndarray) -> np.ndarray:
+def einstein_from_ricci(metric: np.ndarray, ricci: np.ndarray, *, inverse: np.ndarray | None = None) -> np.ndarray:
     g = validate_metric(metric)
-    scalar = ricci_scalar_from_ricci(g, ricci)
+    scalar = ricci_scalar_from_ricci(g, ricci, inverse=inverse)
     return ricci - 0.5 * g * scalar
 
 
 def einstein_tensor(metric: np.ndarray, spacings) -> np.ndarray:
-    return einstein_from_ricci(metric, ricci_tensor(metric, spacings))
+    gu = inverse_metric(metric)
+    gamma = christoffel_symbols(metric, spacings, inverse=gu)
+    ricci = ricci_from_christoffel(gamma, spacings)
+    return einstein_from_ricci(metric, ricci, inverse=gu)
 
 
 def stress_energy_from_einstein(einstein: np.ndarray, *, units: str = "si") -> np.ndarray:
@@ -110,8 +135,8 @@ def stress_energy_tensor(metric: np.ndarray, spacings, *, units: str = "si") -> 
 
 __all__ = [
     "inverse_metric", "metric_derivatives", "christoffel_symbols",
-    "riemann_from_christoffel", "riemann_tensor", "ricci_from_riemann",
-    "ricci_tensor", "ricci_scalar_from_ricci", "ricci_scalar",
+    "riemann_from_christoffel", "ricci_from_christoffel", "riemann_tensor",
+    "ricci_from_riemann", "ricci_tensor", "ricci_scalar_from_ricci", "ricci_scalar",
     "einstein_from_ricci", "einstein_tensor", "stress_energy_from_einstein",
     "stress_energy_tensor",
 ]
