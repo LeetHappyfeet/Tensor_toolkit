@@ -18,6 +18,21 @@ def _add_grid_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--extent", type=float, default=None, help="uniform domain [-extent,+extent] on all axes")
 
 
+def _add_memory_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--memory-mode",
+        choices=("auto", "in_memory", "tiled"),
+        default="auto",
+        help="RAM strategy; auto switches to tiled slabs when needed",
+    )
+    parser.add_argument(
+        "--tile-points",
+        type=int,
+        default=8,
+        help="core t points per tile in tiled mode (default: 8)",
+    )
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="tensor-toolkit",
@@ -32,6 +47,7 @@ def _parser() -> argparse.ArgumentParser:
     run.add_argument("--output", default=None, help="directory for result.npz and metadata.json")
     run.add_argument("--backend", default="cpu", choices=("cpu", "gpu"))
     _add_grid_arguments(run)
+    _add_memory_arguments(run)
 
     inspect = sub.add_parser("inspect", help="inspect a saved experiment result")
     inspect.add_argument("path", help="saved result directory")
@@ -70,15 +86,48 @@ def _print_validation(result) -> None:
     print(f"  status: {validation.get('status', 'UNKNOWN')}")
 
 
-def _configured_experiment(name, backend, points=None, extent=None):
+def _print_memory(result) -> None:
+    memory = result.metadata.get("memory", {})
+    if not memory:
+        return
+    estimate = float(memory.get("estimated_selected_bytes", 0)) / 1024**3
+    print(
+        f"Memory: mode={memory.get('selected_mode', 'unknown')} "
+        f"estimated_peak={estimate:.2f} GiB"
+    )
+    if memory.get("selected_mode") == "tiled":
+        print(
+            f"  tile_points={memory.get('tile_points')} halo={memory.get('halo')} "
+            "(t-axis slabs)"
+        )
+
+
+def _configured_experiment(
+    name, backend, points=None, extent=None, memory_mode="auto", tile_points=8
+):
     require_backend(backend)
-    experiment = replace(get_experiment(name), backend=backend)
+    experiment = replace(
+        get_experiment(name),
+        backend=backend,
+        memory_mode=memory_mode,
+        tile_points=tile_points,
+    )
     return configure_grid(experiment, points=points, extent=extent)
 
 
-def _run(name, output, backend, points=None, extent=None) -> int:
+def _run(
+    name,
+    output,
+    backend,
+    points=None,
+    extent=None,
+    memory_mode="auto",
+    tile_points=8,
+) -> int:
     try:
-        experiment = _configured_experiment(name, backend, points, extent)
+        experiment = _configured_experiment(
+            name, backend, points, extent, memory_mode, tile_points
+        )
     except (ValueError, NotImplementedError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 2
@@ -86,9 +135,14 @@ def _run(name, output, backend, points=None, extent=None) -> int:
     print(f"Running {name} on CPU...")
     print("  grid=" + "x".join(str(axis.points) for axis in experiment.axes))
     print("  domain=" + ", ".join(f"[{axis.start:g},{axis.stop:g}]" for axis in experiment.axes))
-    result = run_experiment(experiment)
+    try:
+        result = run_experiment(experiment)
+    except MemoryError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 2
     for key, value in result.fields.items():
         print(f"  {key:14s} shape={value.shape} max|value|={float(abs(value).max()):.6g}")
+    _print_memory(result)
     _print_validation(result)
     if output:
         print(f"Saved: {save_result(result, output)}")
@@ -113,6 +167,12 @@ def _inspect(path: str, field: str | None = None, center: bool = False) -> int:
     print("Grid: " + " x ".join(str(len(axis)) for axis in axes))
     if axes:
         print("Axes: " + "; ".join(f"{axis[0]:g}..{axis[-1]:g} ({len(axis)})" for axis in axes))
+    memory = metadata.get("memory", {})
+    if memory:
+        print(
+            f"Execution: {memory.get('selected_mode', 'unknown')} "
+            f"(estimated peak {float(memory.get('estimated_selected_bytes', 0))/1024**3:.2f} GiB)"
+        )
     print("Fields:")
     for name in selected:
         value = fields[name]
@@ -160,7 +220,11 @@ def _convergence(name, point_counts, extent, backend) -> int:
     print("points  spacing       max|G|        symmetry_abs   symmetry_rel")
     for points in sorted(point_counts):
         experiment = configure_grid(base, points=points, extent=extent)
-        result = run_experiment(experiment)
+        try:
+            result = run_experiment(experiment)
+        except MemoryError as exc:
+            print(f"{points:6d}  ERROR: {exc}")
+            continue
         einstein = result.fields["einstein"]
         symmetry = field_diagnostics(einstein)["symmetry"]
         spacing = max(result.metadata["spacings"])
@@ -209,7 +273,9 @@ def main(argv=None) -> int:
         print(
             "Backend: CPU/NumPy float64 (supported)\n"
             "GPU: future upgrade; explicitly unsupported in 0.2.0\n"
-            "Pipeline: metric -> inverse -> Christoffel -> Riemann -> Ricci -> scalar -> Einstein -> stress-energy"
+            "Memory: preflight + automatic t-slab tiling with 3-cell halos\n"
+            "Pipeline: metric -> inverse -> Christoffel -> streamed Ricci -> scalar -> Einstein -> stress-energy\n"
+            "Full Riemann is allocated only when explicitly requested."
         )
         return 0
     if args.command == "inspect":
@@ -218,7 +284,15 @@ def main(argv=None) -> int:
         return _convergence(args.experiment, args.points, args.extent, args.backend)
     if args.command == "visualize":
         return _visualize()
-    return _run(args.experiment, args.output, args.backend, args.points, args.extent)
+    return _run(
+        args.experiment,
+        args.output,
+        args.backend,
+        args.points,
+        args.extent,
+        args.memory_mode,
+        args.tile_points,
+    )
 
 
 if __name__ == "__main__":
