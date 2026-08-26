@@ -1,14 +1,213 @@
-"""Enhanced Tensor Toolkit GUI with a 4x4 tensor-component overview."""
+"""Enhanced Tensor Toolkit GUI with tensor overview and memory-aware execution."""
 from __future__ import annotations
+
+import threading
+from dataclasses import replace
 
 import numpy as np
 
+from tensor_toolkit.experiment import run_experiment
 from tensor_toolkit.gui import TensorToolkitGUI, _gui_dependencies
+from tensor_toolkit.memory import memory_plan
 from tensor_toolkit.visualization import COORDINATE_NAMES, extract_2d_slice
+
+VIEWABLE_OUTPUTS = (
+    "metric",
+    "inverse_metric",
+    "ricci",
+    "einstein",
+    "stress_energy",
+)
+DEFAULT_OUTPUTS = frozenset({"metric", "einstein", "stress_energy"})
+
+
+def selected_output_names(flags: dict[str, bool]) -> frozenset[str]:
+    """Return validated GUI output names from checkbox-like boolean flags."""
+    selected = frozenset(name for name in VIEWABLE_OUTPUTS if bool(flags.get(name, False)))
+    if not selected:
+        raise ValueError("select at least one tensor output")
+    return selected
+
+
+def format_memory_plan(plan: dict[str, object]) -> str:
+    """Compact human-readable memory preflight summary for the GUI."""
+    gib = 1024**3
+    selected = float(plan.get("estimated_selected_bytes", 0)) / gib
+    in_memory = float(plan.get("estimated_in_memory_bytes", 0)) / gib
+    tiled = float(plan.get("estimated_tiled_bytes", 0)) / gib
+    available = plan.get("available_bytes")
+    safe = plan.get("safe_budget_bytes")
+    lines = [
+        f"Selected mode: {plan.get('selected_mode', 'unknown')}",
+        f"Estimated peak: {selected:.2f} GiB",
+        f"In-memory estimate: {in_memory:.2f} GiB",
+        f"Tiled estimate: {tiled:.2f} GiB",
+    ]
+    if available is not None:
+        lines.append(f"Available RAM: {float(available) / gib:.2f} GiB")
+    if safe is not None:
+        lines.append(f"Safe budget: {float(safe) / gib:.2f} GiB")
+    if plan.get("selected_mode") == "tiled":
+        lines.append(
+            f"Tile core: {plan.get('tile_points')} t-points; halo: {plan.get('halo')}"
+        )
+    return "\n".join(lines)
 
 
 class TensorToolkitOverviewGUI(TensorToolkitGUI):
-    """Metric simulator with a full rank-2 tensor slice overview."""
+    """Metric simulator with full tensor overview and memory-aware execution controls."""
+
+    def _build_controls(self):
+        super()._build_controls()
+        ttk = self.ttk
+        tk = self.tk
+
+        # The base GUI's left-side control panel is the only frame occupying root (0, 0).
+        panels = self.root.grid_slaves(row=0, column=0)
+        if not panels:
+            raise RuntimeError("Tensor Toolkit GUI control panel was not created")
+        panel = panels[0]
+
+        memory_frame = ttk.LabelFrame(panel, text="Memory / execution", padding=6)
+        memory_frame.grid(row=14, column=0, columnspan=2, sticky="ew", pady=(8, 4))
+
+        ttk.Label(memory_frame, text="Memory mode").grid(row=0, column=0, sticky="w")
+        self.memory_mode_var = tk.StringVar(value="auto")
+        memory_box = ttk.Combobox(
+            memory_frame,
+            textvariable=self.memory_mode_var,
+            values=("auto", "in_memory", "tiled"),
+            state="readonly",
+            width=12,
+        )
+        memory_box.grid(row=0, column=1, sticky="e")
+
+        ttk.Label(memory_frame, text="Tile t-points").grid(row=1, column=0, sticky="w")
+        self.tile_points_var = tk.StringVar(value="8")
+        ttk.Spinbox(
+            memory_frame,
+            from_=1,
+            to=256,
+            textvariable=self.tile_points_var,
+            width=10,
+        ).grid(row=1, column=1, sticky="e")
+
+        output_frame = ttk.LabelFrame(panel, text="Retained outputs", padding=6)
+        output_frame.grid(row=15, column=0, columnspan=2, sticky="ew", pady=4)
+        self.output_vars: dict[str, object] = {}
+        for row, name in enumerate(VIEWABLE_OUTPUTS):
+            variable = tk.BooleanVar(value=name in DEFAULT_OUTPUTS)
+            self.output_vars[name] = variable
+            ttk.Checkbutton(
+                output_frame,
+                text=name,
+                variable=variable,
+                command=self._clear_memory_preview,
+            ).grid(row=row, column=0, sticky="w")
+
+        ttk.Button(
+            output_frame,
+            text="Estimate memory",
+            command=self._show_memory_preflight,
+        ).grid(row=len(VIEWABLE_OUTPUTS), column=0, sticky="ew", pady=(6, 0))
+
+        self.memory_preview_var = tk.StringVar(
+            value="Memory estimate will be calculated before each run."
+        )
+        ttk.Label(
+            panel,
+            textvariable=self.memory_preview_var,
+            justify="left",
+            wraplength=255,
+        ).grid(row=16, column=0, columnspan=2, sticky="w", pady=(4, 8))
+
+        self.root.geometry("1500x980")
+        self.root.minsize(1150, 760)
+
+    def _selected_outputs(self) -> frozenset[str]:
+        flags = {name: bool(variable.get()) for name, variable in self.output_vars.items()}
+        return selected_output_names(flags)
+
+    def _build_experiment(self):
+        experiment = super()._build_experiment()
+        outputs = self._selected_outputs()
+        memory_mode = self.memory_mode_var.get()
+        tile_points = int(self.tile_points_var.get())
+        if tile_points < 1:
+            raise ValueError("tile points must be at least 1")
+        return replace(
+            experiment,
+            outputs=outputs,
+            backend="cpu",
+            memory_mode=memory_mode,
+            tile_points=tile_points,
+        )
+
+    def _preflight_for_experiment(self, experiment):
+        shape = tuple(axis.points for axis in experiment.axes)
+        return memory_plan(
+            shape,
+            experiment.outputs,
+            requested_mode=experiment.memory_mode,
+            tile_points=experiment.tile_points,
+            limit_fraction=experiment.memory_limit_fraction,
+        )
+
+    def _clear_memory_preview(self):
+        self.memory_preview_var.set("Memory estimate changed; recalculate or run simulation.")
+
+    def _show_memory_preflight(self):
+        try:
+            experiment = self._build_experiment()
+            plan = self._preflight_for_experiment(experiment)
+        except (ValueError, TypeError, MemoryError) as exc:
+            self.memory_preview_var.set(f"Preflight failed: {exc}")
+            return
+        self.memory_preview_var.set(format_memory_plan(plan))
+
+    def _start_run(self):
+        try:
+            experiment = self._build_experiment()
+            plan = self._preflight_for_experiment(experiment)
+        except (ValueError, TypeError, MemoryError) as exc:
+            self.messagebox.showerror("Simulation preflight failed", str(exc))
+            self.memory_preview_var.set(f"Preflight failed: {exc}")
+            return
+
+        self.memory_preview_var.set(format_memory_plan(plan))
+        selected_mode = str(plan.get("selected_mode", experiment.memory_mode))
+        selected_gib = float(plan.get("estimated_selected_bytes", 0)) / 1024**3
+        self.run_button.configure(state="disabled")
+        self.status_var.set(
+            f"Calculating on CPU; {selected_mode} mode, estimated peak {selected_gib:.2f} GiB…"
+        )
+
+        def worker():
+            try:
+                result = run_experiment(experiment)
+            except Exception as exc:
+                self.root.after(0, lambda exc=exc: self._run_failed(exc))
+                return
+            self.root.after(0, lambda: self._run_finished(result))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _run_finished(self, result):
+        super()._run_finished(result)
+        memory = result.metadata.get("memory", {})
+        if memory:
+            self.memory_preview_var.set(format_memory_plan(memory))
+            mode = memory.get("selected_mode", "unknown")
+            validation = result.metadata.get("diagnostics", {}).get("status", "UNKNOWN")
+            self.status_var.set(
+                f"Complete: {result.metric_name}; mode {mode}; validation {validation}"
+            )
+
+    def _open_result(self):
+        super()._open_result()
+        memory = self.metadata.get("memory", {}) if self.metadata else {}
+        if memory:
+            self.memory_preview_var.set(format_memory_plan(memory))
 
     def _build_workspace(self):
         ttk = self.ttk
