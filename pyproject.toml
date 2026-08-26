@@ -14,7 +14,7 @@ test = ["pytest>=7.4"]
 
 [project.scripts]
 tensor-toolkit = "tensor_toolkit.cli:main"
-tensor-toolkit-visualizer = "tensor_toolkit.gui:main"
+tensor-toolkit-visualizer = "tensor_toolkit.gui_overview:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
