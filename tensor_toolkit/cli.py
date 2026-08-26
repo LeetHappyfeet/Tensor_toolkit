@@ -8,7 +8,7 @@ import numpy as np
 
 from tensor_toolkit.backends import require_backend
 from tensor_toolkit.diagnostics import field_diagnostics
-from tensor_toolkit.experiment import run_experiment
+from tensor_toolkit.experiment import SUPPORTED_OUTPUTS, run_experiment
 from tensor_toolkit.io import load_result, save_result
 from tensor_toolkit.registry import builtins, configure_grid, get_experiment
 
@@ -46,6 +46,13 @@ def _parser() -> argparse.ArgumentParser:
     run.add_argument("experiment", choices=sorted(builtins()))
     run.add_argument("--output", default=None, help="directory for result.npz and metadata.json")
     run.add_argument("--backend", default="cpu", choices=("cpu", "gpu"))
+    run.add_argument(
+        "--fields",
+        nargs="+",
+        choices=sorted(SUPPORTED_OUTPUTS),
+        default=None,
+        help="persist only these outputs; intermediates are discarded unless requested",
+    )
     _add_grid_arguments(run)
     _add_memory_arguments(run)
 
@@ -103,11 +110,20 @@ def _print_memory(result) -> None:
 
 
 def _configured_experiment(
-    name, backend, points=None, extent=None, memory_mode="auto", tile_points=8
+    name,
+    backend,
+    points=None,
+    extent=None,
+    memory_mode="auto",
+    tile_points=8,
+    fields=None,
 ):
     require_backend(backend)
+    experiment = get_experiment(name)
+    if fields is not None:
+        experiment = replace(experiment, outputs=frozenset(fields))
     experiment = replace(
-        get_experiment(name),
+        experiment,
         backend=backend,
         memory_mode=memory_mode,
         tile_points=tile_points,
@@ -123,10 +139,11 @@ def _run(
     extent=None,
     memory_mode="auto",
     tile_points=8,
+    fields=None,
 ) -> int:
     try:
         experiment = _configured_experiment(
-            name, backend, points, extent, memory_mode, tile_points
+            name, backend, points, extent, memory_mode, tile_points, fields
         )
     except (ValueError, NotImplementedError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
@@ -135,6 +152,7 @@ def _run(
     print(f"Running {name} on CPU...")
     print("  grid=" + "x".join(str(axis.points) for axis in experiment.axes))
     print("  domain=" + ", ".join(f"[{axis.start:g},{axis.stop:g}]" for axis in experiment.axes))
+    print("  outputs=" + ", ".join(sorted(experiment.outputs)))
     try:
         result = run_experiment(experiment)
     except MemoryError as exc:
@@ -292,6 +310,7 @@ def main(argv=None) -> int:
         args.extent,
         args.memory_mode,
         args.tile_points,
+        args.fields,
     )
 
 
