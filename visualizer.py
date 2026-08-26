@@ -6,7 +6,7 @@ runner.  This file is retained so existing checkouts can still run
 ``python visualizer.py``.
 """
 
-from tensor_toolkit.gui import main
+from tensor_toolkit.gui_overview import main
 
 
 if __name__ == "__main__":
