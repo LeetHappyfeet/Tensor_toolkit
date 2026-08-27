@@ -6,6 +6,8 @@ import shutil
 
 import numpy as np
 
+from tensor_toolkit.storage import INCOMPLETE_MARKER
+
 
 def _write_metadata(result, path: Path):
     meta = {
@@ -52,6 +54,9 @@ def save_result(result, path):
         np.savez_compressed(path / "result.npz", **arrays)
 
     _write_metadata(result, path)
+    marker = path / INCOMPLETE_MARKER
+    if marker.exists():
+        marker.unlink()
     return path
 
 
@@ -85,6 +90,11 @@ def _load_disk_backed(path: Path, metadata):
 def load_result(path):
     """Load metadata, fields, and axes without forcing large fields into RAM."""
     path = Path(path)
+    if (path / INCOMPLETE_MARKER).exists():
+        raise ValueError(
+            f"{path} contains an incomplete disk-backed calculation; rerun or choose a different result directory"
+        )
+
     metadata_path = path / "metadata.json"
     if not metadata_path.is_file():
         raise FileNotFoundError(f"{path} must contain metadata.json")
