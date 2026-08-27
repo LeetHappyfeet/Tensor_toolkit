@@ -53,6 +53,12 @@ def _parser() -> argparse.ArgumentParser:
         default=None,
         help="persist only these outputs; intermediates are discarded unless requested",
     )
+    run.add_argument(
+        "--storage-mode",
+        choices=("auto", "memory", "disk"),
+        default="auto",
+        help="persistent output storage; disk writes memory-mapped .npy fields incrementally",
+    )
     _add_grid_arguments(run)
     _add_memory_arguments(run)
 
@@ -107,6 +113,13 @@ def _print_memory(result) -> None:
             f"  tile_points={memory.get('tile_points')} halo={memory.get('halo')} "
             "(t-axis slabs)"
         )
+    storage = result.metadata.get("storage", {})
+    if storage:
+        persistent = float(memory.get("persistent_output_bytes", 0)) / 1024**3
+        print(
+            f"Storage: mode={storage.get('mode', 'unknown')} "
+            f"format={storage.get('format', 'unknown')} persistent={persistent:.2f} GiB"
+        )
 
 
 def _configured_experiment(
@@ -140,6 +153,7 @@ def _run(
     memory_mode="auto",
     tile_points=8,
     fields=None,
+    storage_mode="auto",
 ) -> int:
     try:
         experiment = _configured_experiment(
@@ -154,8 +168,12 @@ def _run(
     print("  domain=" + ", ".join(f"[{axis.start:g},{axis.stop:g}]" for axis in experiment.axes))
     print("  outputs=" + ", ".join(sorted(experiment.outputs)))
     try:
-        result = run_experiment(experiment)
-    except MemoryError as exc:
+        result = run_experiment(
+            experiment,
+            output_path=output,
+            storage_mode=storage_mode,
+        )
+    except (MemoryError, OSError, ValueError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 2
     for key, value in result.fields.items():
@@ -191,6 +209,9 @@ def _inspect(path: str, field: str | None = None, center: bool = False) -> int:
             f"Execution: {memory.get('selected_mode', 'unknown')} "
             f"(estimated peak {float(memory.get('estimated_selected_bytes', 0))/1024**3:.2f} GiB)"
         )
+    storage = metadata.get("storage", {})
+    if storage:
+        print(f"Storage: {storage.get('mode', 'unknown')} ({storage.get('format', 'unknown')})")
     print("Fields:")
     for name in selected:
         value = fields[name]
@@ -268,7 +289,7 @@ def _interactive() -> int:
 
 def _visualize() -> int:
     try:
-        from tensor_toolkit.gui_overview import main as gui_main
+        from tensor_toolkit.gui import main as gui_main
         return gui_main()
     except RuntimeError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
@@ -292,6 +313,7 @@ def main(argv=None) -> int:
             "Backend: CPU/NumPy float64 (supported)\n"
             "GPU: future upgrade; explicitly unsupported in 0.2.0\n"
             "Memory: preflight + automatic t-slab tiling with 3-cell halos\n"
+            "Storage: optional disk-backed NumPy memmap output for large results\n"
             "Pipeline: metric -> inverse -> Christoffel -> streamed Ricci -> scalar -> Einstein -> stress-energy\n"
             "Full Riemann is allocated only when explicitly requested."
         )
@@ -311,6 +333,7 @@ def main(argv=None) -> int:
         args.memory_mode,
         args.tile_points,
         args.fields,
+        args.storage_mode,
     )
 
 

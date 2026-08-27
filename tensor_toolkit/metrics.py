@@ -18,13 +18,17 @@ class Metric(Protocol):
         """Return covariant g_mu_nu with shape (4, 4, Nt, Nx, Ny, Nz)."""
 
 
+def _grid_shape(coordinate_grid: tuple[np.ndarray, ...]) -> tuple[int, ...]:
+    return np.broadcast_shapes(*(np.shape(value) for value in coordinate_grid))
+
+
 @dataclass(frozen=True)
 class MinkowskiMetric:
     name: str = "Minkowski"
     coordinates: tuple[str, str, str, str] = ("t", "x", "y", "z")
 
     def evaluate(self, coordinate_grid: tuple[np.ndarray, ...]) -> np.ndarray:
-        shape = coordinate_grid[0].shape
+        shape = _grid_shape(coordinate_grid)
         g = np.zeros((4, 4, *shape), dtype=np.float64)
         g[0, 0] = -1.0
         g[1, 1] = g[2, 2] = g[3, 3] = 1.0
@@ -41,7 +45,7 @@ class DeSitterFlatMetric:
 
     def evaluate(self, coordinate_grid: tuple[np.ndarray, ...]) -> np.ndarray:
         t = coordinate_grid[0]
-        shape = t.shape
+        shape = _grid_shape(coordinate_grid)
         scale2 = np.exp(2.0 * float(self.hubble) * t)
         g = np.zeros((4, 4, *shape), dtype=np.float64)
         g[0, 0] = -1.0
@@ -80,9 +84,10 @@ class AlcubierreMetric:
         xs = float(self.x0) + v * t
         r = np.sqrt((x - xs) ** 2 + y**2 + z**2)
         f = self.shape_function(r)
+        shape = np.broadcast_shapes(np.shape(t), np.shape(x), np.shape(y), np.shape(z))
 
         # ds^2 = -dt^2 + (dx - v f dt)^2 + dy^2 + dz^2
-        g = np.zeros((4, 4, *t.shape), dtype=np.float64)
+        g = np.zeros((4, 4, *shape), dtype=np.float64)
         g[0, 0] = -(1.0 - (v * f) ** 2)
         g[0, 1] = g[1, 0] = -v * f
         g[1, 1] = 1.0
