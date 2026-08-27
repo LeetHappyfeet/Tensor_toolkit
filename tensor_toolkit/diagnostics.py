@@ -5,27 +5,72 @@ from __future__ import annotations
 import numpy as np
 
 
-def symmetry_error(tensor: np.ndarray) -> dict[str, float]:
-    """Return absolute and relative symmetry residuals for the first two axes."""
-    value = np.asarray(tensor)
+def _chunk_slices(value: np.ndarray, chunk_points: int = 8):
+    if value.ndim < 3:
+        yield (...,)
+        return
+    grid_axis = 2
+    length = value.shape[grid_axis]
+    for start in range(0, length, max(1, int(chunk_points))):
+        stop = min(length, start + max(1, int(chunk_points)))
+        index = [slice(None)] * value.ndim
+        index[grid_axis] = slice(start, stop)
+        yield tuple(index)
+
+
+def symmetry_error(tensor: np.ndarray, *, chunk_points: int = 8) -> dict[str, float]:
+    """Return absolute and relative symmetry residuals for the first two axes.
+
+    Large arrays and memmaps are scanned in chunks so the diagnostic never
+    materializes a full-grid ``tensor - tensor.T`` temporary.
+    """
+    value = np.asanyarray(tensor)
     if value.ndim < 2 or value.shape[0] != value.shape[1]:
         raise ValueError("symmetry diagnostics require equal first two tensor axes")
-    residual = value - np.swapaxes(value, 0, 1)
-    absolute = float(np.max(np.abs(residual))) if value.size else 0.0
-    scale = float(np.max(np.abs(value))) if value.size else 0.0
+    absolute = 0.0
+    scale = 0.0
+    for index in _chunk_slices(value, chunk_points):
+        chunk = np.asarray(value[index])
+        residual = chunk - np.swapaxes(chunk, 0, 1)
+        if chunk.size:
+            absolute = max(absolute, float(np.max(np.abs(residual))))
+            scale = max(scale, float(np.max(np.abs(chunk))))
     relative = absolute / scale if scale else 0.0
     return {"absolute": absolute, "relative": relative, "scale": scale}
 
 
-def field_diagnostics(tensor: np.ndarray) -> dict[str, object]:
-    """Return finite-value and, for rank-2 tensors, symmetry diagnostics."""
-    value = np.asarray(tensor)
-    out: dict[str, object] = {
-        "finite": bool(np.all(np.isfinite(value))),
-        "max_abs": float(np.max(np.abs(value))) if value.size else 0.0,
-    }
+def field_diagnostics(tensor: np.ndarray, *, chunk_points: int = 8) -> dict[str, object]:
+    """Return finite-value and, for rank-2 tensors, symmetry diagnostics safely."""
+    value = np.asanyarray(tensor)
+    finite = True
+    max_abs = 0.0
+    for index in _chunk_slices(value, chunk_points):
+        chunk = np.asarray(value[index])
+        finite = finite and bool(np.all(np.isfinite(chunk)))
+        if chunk.size:
+            max_abs = max(max_abs, float(np.max(np.abs(chunk))))
+    out: dict[str, object] = {"finite": finite, "max_abs": max_abs}
     if value.ndim >= 2 and value.shape[:2] == (4, 4):
-        out["symmetry"] = symmetry_error(value)
+        out["symmetry"] = symmetry_error(value, chunk_points=chunk_points)
+    return out
+
+
+def merge_field_diagnostics(current, local):
+    """Merge diagnostics computed over disjoint spatial chunks."""
+    if current is None:
+        return local
+    out = {
+        "finite": bool(current.get("finite", True) and local.get("finite", True)),
+        "max_abs": max(float(current.get("max_abs", 0.0)), float(local.get("max_abs", 0.0))),
+    }
+    if "symmetry" in current and "symmetry" in local:
+        absolute = max(float(current["symmetry"]["absolute"]), float(local["symmetry"]["absolute"]))
+        scale = max(float(current["symmetry"]["scale"]), float(local["symmetry"]["scale"]))
+        out["symmetry"] = {
+            "absolute": absolute,
+            "scale": scale,
+            "relative": absolute / scale if scale else 0.0,
+        }
     return out
 
 
@@ -69,6 +114,7 @@ def result_diagnostics(
 __all__ = [
     "symmetry_error",
     "field_diagnostics",
+    "merge_field_diagnostics",
     "validation_status",
     "result_diagnostics",
 ]
