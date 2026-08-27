@@ -4,9 +4,12 @@ from tensor_toolkit.experiment import Axis, Experiment
 from tensor_toolkit.metrics import DeSitterFlatMetric, MinkowskiMetric
 from tensor_toolkit.visualization import (
     center_matrix,
+    component_choice,
+    component_index,
     editable_metric_parameters,
     extract_2d_slice,
     replace_metric_parameters,
+    tensor_component_label,
 )
 
 
@@ -40,3 +43,12 @@ def test_metric_parameter_helpers():
     de_sitter = Experiment(DeSitterFlatMetric(hubble=0.1), axes)
     changed = replace_metric_parameters(de_sitter, {"hubble": 0.25})
     assert changed.metric.hubble == 0.25
+
+
+def test_coordinate_component_labels_round_trip():
+    assert component_choice(0) == "t (0)"
+    assert component_choice(3) == "z (3)"
+    assert component_index("x (1)") == 1
+    assert component_index("y") == 2
+    assert tensor_component_label("stress_energy", 0, 1) == "T_tx [0,1]"
+    assert tensor_component_label("einstein", 3, 3) == "G_zz [3,3]"
