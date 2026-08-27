@@ -4,6 +4,26 @@ Tensor Toolkit is an experimental scientific-computing package for calculating a
 
 The current development direction is a validated CPU reference pipeline plus a metric tensor simulator. Legacy symbolic, plotting, and GPU-era code remains in the repository for migration/reference purposes, but it is not the authoritative execution path.
 
+# Tensor Toolkit
+What's new?
+Added new memory handling to prevent memory overflows. This can be changed in either the UI or terminal window. For example:
+```
+tensor-toolkit run alcubierre --points 31 --fields einstein stress_energy --memory-mode auto
+```
+or
+```
+tensor-toolkit run alcubierre \
+    --points 31 \
+    --fields einstein stress_energy \
+    --memory-mode auto
+```
+Added more changes to the GUI.
+
+<img width="1920" height="1017" alt="python_nt60fyL2VS" src="https://github.com/user-attachments/assets/f8308a17-6831-4e61-b80c-06263dde65d4" />
+
+
+
+
 ## Current GR pipeline
 
 The supported reference path is:
