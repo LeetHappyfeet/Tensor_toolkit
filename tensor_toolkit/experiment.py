@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from itertools import product
 from pathlib import Path
 import shutil
 
@@ -62,7 +63,9 @@ class Experiment:
         return tuple(axis.values() for axis in self.axes)
 
     def coordinates(self) -> tuple[np.ndarray, ...]:
-        return tuple(np.meshgrid(*self.axis_values(), indexing="ij", sparse=False))
+        # Sparse coordinates broadcast to the full grid inside metric definitions
+        # without allocating four redundant dense coordinate volumes.
+        return tuple(np.meshgrid(*self.axis_values(), indexing="ij", sparse=True))
 
     def spacings(self) -> tuple[float, ...]:
         vectors = self.axis_values()
@@ -152,8 +155,12 @@ def _diagnostics(metric: np.ndarray | None, fields: dict[str, np.ndarray], metri
     }
 
 
+def _sparse_coordinates(axis_values):
+    return tuple(np.meshgrid(*axis_values, indexing="ij", sparse=True))
+
+
 def _run_in_memory(experiment: Experiment, axis_values, spacings):
-    coordinate_grid = tuple(np.meshgrid(*axis_values, indexing="ij", sparse=False))
+    coordinate_grid = _sparse_coordinates(axis_values)
     metric = experiment.metric.evaluate(coordinate_grid)
     del coordinate_grid
     fields = _compute_fields(metric, spacings, experiment.outputs, units=experiment.stress_energy_units)
@@ -161,13 +168,13 @@ def _run_in_memory(experiment: Experiment, axis_values, spacings):
     return fields, diagnostics
 
 
-def _crop_core(value: np.ndarray, core_start: int, core_stop: int, halo_start: int):
+def _crop_core_nd(value: np.ndarray, core_starts, core_stops, halo_starts):
     prefix = value.ndim - 4
-    local_start = core_start - halo_start
-    local_stop = core_stop - halo_start
-    index = [slice(None)] * prefix + [
-        slice(local_start, local_stop), slice(None), slice(None), slice(None)
-    ]
+    index = [slice(None)] * prefix
+    for axis in range(4):
+        local_start = int(core_starts[axis]) - int(halo_starts[axis])
+        local_stop = int(core_stops[axis]) - int(halo_starts[axis])
+        index.append(slice(local_start, local_stop))
     return value[tuple(index)]
 
 
@@ -179,48 +186,61 @@ def _allocate_global(local: np.ndarray, grid_shape, *, name: str, store: DiskFie
     return np.empty(shape, dtype=local.dtype)
 
 
+def _block_starts(grid_shape, block_shape):
+    ranges = [range(0, int(grid_shape[i]), int(block_shape[i])) for i in range(4)]
+    yield from product(*ranges)
+
+
 def _run_tiled(
     experiment: Experiment,
     axis_values,
     spacings,
     *,
+    block_shape,
     halo: int = 3,
     store: DiskFieldStore | None = None,
 ):
-    """Execute t-slabs with halo cells and optional direct-to-disk output."""
+    """Execute 4-D core blocks with halo cells and optional direct-to-disk output."""
     grid_shape = tuple(len(axis) for axis in axis_values)
-    total_t = grid_shape[0]
-    tile_points = max(1, int(experiment.tile_points))
+    block_shape = tuple(max(1, min(int(block_shape[i]), grid_shape[i])) for i in range(4))
     fields: dict[str, np.ndarray] = {}
     metric_diag = None
     output_diags: dict[str, dict[str, object]] = {}
 
-    for core_start in range(0, total_t, tile_points):
-        core_stop = min(total_t, core_start + tile_points)
-        halo_start = max(0, core_start - halo)
-        halo_stop = min(total_t, core_stop + halo)
-        local_axes = (axis_values[0][halo_start:halo_stop], *axis_values[1:])
-        coordinate_grid = tuple(np.meshgrid(*local_axes, indexing="ij", sparse=False))
+    for core_starts in _block_starts(grid_shape, block_shape):
+        core_stops = tuple(
+            min(grid_shape[i], core_starts[i] + block_shape[i]) for i in range(4)
+        )
+        halo_starts = tuple(max(0, core_starts[i] - halo) for i in range(4))
+        halo_stops = tuple(min(grid_shape[i], core_stops[i] + halo) for i in range(4))
+        local_axes = tuple(
+            axis_values[i][halo_starts[i]:halo_stops[i]] for i in range(4)
+        )
+        coordinate_grid = _sparse_coordinates(local_axes)
         metric = experiment.metric.evaluate(coordinate_grid)
         del coordinate_grid
-        metric_diag = merge_field_diagnostics(metric_diag, field_diagnostics(metric))
+
+        metric_core = _crop_core_nd(metric, core_starts, core_stops, halo_starts)
+        metric_diag = merge_field_diagnostics(metric_diag, field_diagnostics(metric_core))
+
         local_fields = _compute_fields(
             metric, spacings, experiment.outputs, units=experiment.stress_energy_units
         )
         for name, local in local_fields.items():
-            cropped = _crop_core(local, core_start, core_stop, halo_start)
+            cropped = _crop_core_nd(local, core_starts, core_stops, halo_starts)
             if name in ("einstein", "stress_energy"):
                 output_diags[name] = merge_field_diagnostics(
                     output_diags.get(name), field_diagnostics(cropped)
                 )
             if name not in fields:
                 fields[name] = _allocate_global(local, grid_shape, name=name, store=store)
-            target_prefix = fields[name].ndim - 4
-            target_index = [slice(None)] * target_prefix + [
-                slice(core_start, core_stop), slice(None), slice(None), slice(None)
+            prefix = fields[name].ndim - 4
+            target_index = [slice(None)] * prefix + [
+                slice(core_starts[i], core_stops[i]) for i in range(4)
             ]
             fields[name][tuple(target_index)] = cropped
-        del local_fields, metric
+
+        del local_fields, metric, metric_core
 
     if store is not None:
         store.flush()
@@ -237,7 +257,6 @@ def _check_disk_space(output_path, required_bytes: int) -> None:
     path = Path(output_path)
     path.mkdir(parents=True, exist_ok=True)
     free = shutil.disk_usage(path).free
-    # Leave 10% headroom for metadata, filesystem overhead, and concurrent use.
     needed = int(required_bytes * 1.10)
     if free < needed:
         raise OSError(
@@ -252,12 +271,7 @@ def run_experiment(
     output_path=None,
     storage_mode: str = "memory",
 ) -> ExperimentResult:
-    """Run an experiment with optional disk-backed persistent output.
-
-    ``storage_mode='disk'`` streams requested fields into ``output_path/fields``
-    as memory-mapped ``.npy`` arrays. ``storage_mode='auto'`` chooses disk for
-    large persistent results when an output path is supplied.
-    """
+    """Run an experiment with optional disk-backed persistent output."""
     require_backend(experiment.backend)
     unknown = set(experiment.outputs) - SUPPORTED_OUTPUTS
     if unknown:
@@ -294,6 +308,7 @@ def run_experiment(
             experiment,
             axis_values,
             spacings,
+            block_shape=tuple(plan["block_shape"]),
             halo=int(plan["halo"]),
             store=store,
         )
