@@ -3,12 +3,18 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from pathlib import Path
+import shutil
 
 import numpy as np
 
 from tensor_toolkit.backends import require_backend
-from tensor_toolkit.diagnostics import field_diagnostics, validation_status
-from tensor_toolkit.memory import memory_plan
+from tensor_toolkit.diagnostics import (
+    field_diagnostics,
+    merge_field_diagnostics,
+    validation_status,
+)
+from tensor_toolkit.memory import memory_plan, output_bytes, select_storage_mode
 from tensor_toolkit.metrics import Metric
 from tensor_toolkit.reference.geometry import (
     christoffel_symbols,
@@ -19,6 +25,7 @@ from tensor_toolkit.reference.geometry import (
     riemann_from_christoffel,
     stress_energy_from_einstein,
 )
+from tensor_toolkit.storage import DiskFieldStore
 
 SUPPORTED_OUTPUTS = frozenset({
     "metric", "inverse_metric", "christoffel", "riemann",
@@ -105,8 +112,6 @@ def _compute_fields(metric: np.ndarray, spacings, outputs, *, units: str) -> dic
 
     ricci = None
     if need_ricci:
-        # If Riemann was explicitly requested, reuse it. Otherwise contract directly
-        # from Christoffel and never allocate the 256-component Riemann field.
         ricci = ricci_from_riemann(riemann) if riemann is not None else ricci_from_christoffel(gamma, spacings)
         if "ricci" in outputs:
             fields["ricci"] = ricci
@@ -128,15 +133,18 @@ def _compute_fields(metric: np.ndarray, spacings, outputs, *, units: str) -> dic
     return fields
 
 
-def _diagnostics(metric: np.ndarray | None, fields: dict[str, np.ndarray], metric_diag=None):
+def _diagnostics(metric: np.ndarray | None, fields: dict[str, np.ndarray], metric_diag=None, field_diags=None):
     diagnostics: dict[str, dict[str, object]] = {}
     if metric is not None:
         diagnostics["metric"] = field_diagnostics(metric)
     elif metric_diag is not None:
         diagnostics["metric"] = metric_diag
-    for name in ("einstein", "stress_energy"):
-        if name in fields:
-            diagnostics[name] = field_diagnostics(fields[name])
+    if field_diags:
+        diagnostics.update(field_diags)
+    else:
+        for name in ("einstein", "stress_energy"):
+            if name in fields:
+                diagnostics[name] = field_diagnostics(fields[name])
     return {
         "fields": diagnostics,
         "status": validation_status(diagnostics),
@@ -153,23 +161,6 @@ def _run_in_memory(experiment: Experiment, axis_values, spacings):
     return fields, diagnostics
 
 
-def _merge_metric_diag(current, local):
-    if current is None:
-        return local
-    out = dict(current)
-    out["finite"] = bool(current.get("finite", True) and local.get("finite", True))
-    out["max_abs"] = max(float(current.get("max_abs", 0.0)), float(local.get("max_abs", 0.0)))
-    if "symmetry" in current and "symmetry" in local:
-        absolute = max(float(current["symmetry"]["absolute"]), float(local["symmetry"]["absolute"]))
-        scale = max(float(current["symmetry"]["scale"]), float(local["symmetry"]["scale"]))
-        out["symmetry"] = {
-            "absolute": absolute,
-            "scale": scale,
-            "relative": absolute / scale if scale else 0.0,
-        }
-    return out
-
-
 def _crop_core(value: np.ndarray, core_start: int, core_stop: int, halo_start: int):
     prefix = value.ndim - 4
     local_start = core_start - halo_start
@@ -180,18 +171,29 @@ def _crop_core(value: np.ndarray, core_start: int, core_stop: int, halo_start: i
     return value[tuple(index)]
 
 
-def _allocate_global(local: np.ndarray, grid_shape):
+def _allocate_global(local: np.ndarray, grid_shape, *, name: str, store: DiskFieldStore | None):
     prefix = local.shape[: local.ndim - 4]
-    return np.empty((*prefix, *grid_shape), dtype=local.dtype)
+    shape = (*prefix, *grid_shape)
+    if store is not None:
+        return store.allocate(name, shape, dtype=local.dtype)
+    return np.empty(shape, dtype=local.dtype)
 
 
-def _run_tiled(experiment: Experiment, axis_values, spacings, *, halo: int = 3):
-    """Execute t-slabs with a halo that preserves nested second-order edge stencils."""
+def _run_tiled(
+    experiment: Experiment,
+    axis_values,
+    spacings,
+    *,
+    halo: int = 3,
+    store: DiskFieldStore | None = None,
+):
+    """Execute t-slabs with halo cells and optional direct-to-disk output."""
     grid_shape = tuple(len(axis) for axis in axis_values)
     total_t = grid_shape[0]
     tile_points = max(1, int(experiment.tile_points))
     fields: dict[str, np.ndarray] = {}
     metric_diag = None
+    output_diags: dict[str, dict[str, object]] = {}
 
     for core_start in range(0, total_t, tile_points):
         core_stop = min(total_t, core_start + tile_points)
@@ -201,25 +203,61 @@ def _run_tiled(experiment: Experiment, axis_values, spacings, *, halo: int = 3):
         coordinate_grid = tuple(np.meshgrid(*local_axes, indexing="ij", sparse=False))
         metric = experiment.metric.evaluate(coordinate_grid)
         del coordinate_grid
-        metric_diag = _merge_metric_diag(metric_diag, field_diagnostics(metric))
+        metric_diag = merge_field_diagnostics(metric_diag, field_diagnostics(metric))
         local_fields = _compute_fields(
             metric, spacings, experiment.outputs, units=experiment.stress_energy_units
         )
         for name, local in local_fields.items():
-            if name not in fields:
-                fields[name] = _allocate_global(local, grid_shape)
             cropped = _crop_core(local, core_start, core_stop, halo_start)
+            if name in ("einstein", "stress_energy"):
+                output_diags[name] = merge_field_diagnostics(
+                    output_diags.get(name), field_diagnostics(cropped)
+                )
+            if name not in fields:
+                fields[name] = _allocate_global(local, grid_shape, name=name, store=store)
             target_prefix = fields[name].ndim - 4
             target_index = [slice(None)] * target_prefix + [
                 slice(core_start, core_stop), slice(None), slice(None), slice(None)
             ]
             fields[name][tuple(target_index)] = cropped
+        del local_fields, metric
 
-    diagnostics = _diagnostics(fields.get("metric"), fields, metric_diag=metric_diag)
+    if store is not None:
+        store.flush()
+    diagnostics = _diagnostics(
+        fields.get("metric") if store is None else None,
+        fields,
+        metric_diag=metric_diag,
+        field_diags=output_diags,
+    )
     return fields, diagnostics
 
 
-def run_experiment(experiment: Experiment) -> ExperimentResult:
+def _check_disk_space(output_path, required_bytes: int) -> None:
+    path = Path(output_path)
+    path.mkdir(parents=True, exist_ok=True)
+    free = shutil.disk_usage(path).free
+    # Leave 10% headroom for metadata, filesystem overhead, and concurrent use.
+    needed = int(required_bytes * 1.10)
+    if free < needed:
+        raise OSError(
+            f"disk-backed output needs about {needed / 1024**3:.2f} GiB free, "
+            f"but only {free / 1024**3:.2f} GiB is available at {path}"
+        )
+
+
+def run_experiment(
+    experiment: Experiment,
+    *,
+    output_path=None,
+    storage_mode: str = "memory",
+) -> ExperimentResult:
+    """Run an experiment with optional disk-backed persistent output.
+
+    ``storage_mode='disk'`` streams requested fields into ``output_path/fields``
+    as memory-mapped ``.npy`` arrays. ``storage_mode='auto'`` chooses disk for
+    large persistent results when an output path is supplied.
+    """
     require_backend(experiment.backend)
     unknown = set(experiment.outputs) - SUPPORTED_OUTPUTS
     if unknown:
@@ -230,17 +268,34 @@ def run_experiment(experiment: Experiment) -> ExperimentResult:
     axis_values = experiment.axis_values()
     spacings = tuple(float(v[1] - v[0]) for v in axis_values)
     grid_shape = tuple(len(v) for v in axis_values)
+    selected_storage = select_storage_mode(
+        grid_shape,
+        experiment.outputs,
+        requested_mode=storage_mode,
+        output_path=output_path,
+        limit_fraction=experiment.memory_limit_fraction,
+    )
+    disk_backed = selected_storage == "disk"
+    if disk_backed:
+        _check_disk_space(output_path, output_bytes(grid_shape, experiment.outputs))
+
     plan = memory_plan(
         grid_shape,
         experiment.outputs,
         requested_mode=experiment.memory_mode,
         tile_points=experiment.tile_points,
         limit_fraction=experiment.memory_limit_fraction,
+        disk_backed=disk_backed,
     )
 
+    store = DiskFieldStore(output_path) if disk_backed else None
     if plan["selected_mode"] == "tiled":
         fields, diagnostics = _run_tiled(
-            experiment, axis_values, spacings, halo=int(plan["halo"])
+            experiment,
+            axis_values,
+            spacings,
+            halo=int(plan["halo"]),
+            store=store,
         )
     else:
         fields, diagnostics = _run_in_memory(experiment, axis_values, spacings)
@@ -257,6 +312,10 @@ def run_experiment(experiment: Experiment) -> ExperimentResult:
             "backend": "cpu",
             "diagnostics": diagnostics,
             "memory": plan,
+            "storage": {
+                "mode": selected_storage,
+                "format": "npy-memmap" if disk_backed else "npz",
+            },
         },
     )
 
