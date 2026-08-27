@@ -15,10 +15,12 @@ COMPONENTS = {
     "stress_energy": 16,
 }
 
-# This deliberately exceeds the sum of the obvious persistent intermediates.
-# NumPy differentiation, inversion/einsum operations and tensor contractions
-# create temporary arrays that briefly coexist with metric/inverse/Gamma/Ricci.
-BASE_WORKING_COMPONENTS = 320
+# Deliberately conservative. NumPy differentiation, inversion/einsum operations,
+# tensor contractions, allocator fragmentation and GUI/process overhead create a
+# substantially larger transient working set than the named arrays alone imply.
+# The previous 320-component allowance was still too optimistic on Windows for
+# a 65^4 Alcubierre run, so automatic block sizing now reserves roughly 2x that.
+BASE_WORKING_COMPONENTS = 640
 HALO = 3
 
 
@@ -102,8 +104,6 @@ def choose_block_shape(
 
     core = [min(shape[0], int(tile_points)), shape[1], shape[2], shape[3]]
 
-    # Repeatedly split the largest current core. Halos make very tiny blocks
-    # inefficient, so halving gives a robust balance between memory and block count.
     while block_working_bytes(shape, outputs, core, halo) > working_budget_bytes:
         reducible = [i for i, n in enumerate(core) if n > 1]
         if not reducible:
@@ -112,8 +112,6 @@ def choose_block_shape(
                 "even the minimum halo block exceeds the safe working-RAM budget: "
                 f"need about {minimum / 1024**3:.2f} GiB for a 1x1x1x1 core"
             )
-        # Prefer spatial decomposition; time is reduced only if all larger spatial
-        # dimensions have already become comparable/small.
         spatial = [i for i in reducible if i != 0]
         candidates = spatial or reducible
         axis = max(candidates, key=lambda i: core[i])
