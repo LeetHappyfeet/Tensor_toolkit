@@ -13,6 +13,46 @@ import numpy as np
 from tensor_toolkit.metrics import AlcubierreMetric, DeSitterFlatMetric, MinkowskiMetric
 
 COORDINATE_NAMES = ("t", "x", "y", "z")
+FIELD_SYMBOLS = {
+    "metric": "g",
+    "inverse_metric": "g^-1",
+    "ricci": "R",
+    "einstein": "G",
+    "stress_energy": "T",
+}
+
+
+def component_choice(index: int) -> str:
+    """Human-readable coordinate/index choice used by GUI component selectors."""
+    index = int(index)
+    if index not in range(4):
+        raise ValueError("tensor component index must be between 0 and 3")
+    return f"{COORDINATE_NAMES[index]} ({index})"
+
+
+def component_index(choice) -> int:
+    """Convert either ``x (1)`` or a numeric value into a tensor index."""
+    if isinstance(choice, (int, np.integer)):
+        index = int(choice)
+    else:
+        text = str(choice).strip()
+        if text in COORDINATE_NAMES:
+            index = COORDINATE_NAMES.index(text)
+        elif "(" in text and text.endswith(")"):
+            index = int(text.rsplit("(", 1)[1][:-1])
+        else:
+            index = int(text)
+    if index not in range(4):
+        raise ValueError("tensor component index must be between 0 and 3")
+    return index
+
+
+def tensor_component_label(field_name: str, mu: int, nu: int) -> str:
+    """Return labels such as ``T_tx [0,1]`` for rank-2 coordinate components."""
+    mu = component_index(mu)
+    nu = component_index(nu)
+    symbol = FIELD_SYMBOLS.get(str(field_name), str(field_name))
+    return f"{symbol}_{COORDINATE_NAMES[mu]}{COORDINATE_NAMES[nu]} [{mu},{nu}]"
 
 
 def editable_metric_parameters(metric) -> dict[str, float]:
@@ -101,9 +141,7 @@ def center_matrix(field: np.ndarray) -> np.ndarray:
 
 
 __all__ = [
-    "COORDINATE_NAMES",
-    "editable_metric_parameters",
-    "replace_metric_parameters",
-    "extract_2d_slice",
-    "center_matrix",
+    "COORDINATE_NAMES", "FIELD_SYMBOLS", "component_choice", "component_index",
+    "tensor_component_label", "editable_metric_parameters",
+    "replace_metric_parameters", "extract_2d_slice", "center_matrix",
 ]
