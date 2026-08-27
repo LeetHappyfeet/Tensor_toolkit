@@ -8,7 +8,8 @@ import numpy as np
 
 from tensor_toolkit.experiment import run_experiment
 from tensor_toolkit.gui import TensorToolkitGUI, _gui_dependencies
-from tensor_toolkit.memory import memory_plan
+from tensor_toolkit.io import save_result
+from tensor_toolkit.memory import memory_plan, select_storage_mode
 from tensor_toolkit.visualization import COORDINATE_NAMES, extract_2d_slice
 
 VIEWABLE_OUTPUTS = (
@@ -35,11 +36,14 @@ def format_memory_plan(plan: dict[str, object]) -> str:
     selected = float(plan.get("estimated_selected_bytes", 0)) / gib
     in_memory = float(plan.get("estimated_in_memory_bytes", 0)) / gib
     tiled = float(plan.get("estimated_tiled_bytes", 0)) / gib
+    persistent = float(plan.get("persistent_output_bytes", 0)) / gib
     available = plan.get("available_bytes")
     safe = plan.get("safe_budget_bytes")
     lines = [
         f"Selected mode: {plan.get('selected_mode', 'unknown')}",
-        f"Estimated peak: {selected:.2f} GiB",
+        f"Output storage: {'disk-backed' if plan.get('disk_backed') else 'memory'}",
+        f"Estimated peak RAM: {selected:.2f} GiB",
+        f"Persistent result size: {persistent:.2f} GiB",
         f"In-memory estimate: {in_memory:.2f} GiB",
         f"Tiled estimate: {tiled:.2f} GiB",
     ]
@@ -55,14 +59,13 @@ def format_memory_plan(plan: dict[str, object]) -> str:
 
 
 class TensorToolkitOverviewGUI(TensorToolkitGUI):
-    """Metric simulator with full tensor overview and memory-aware execution controls."""
+    """Metric simulator with tensor overview, tiling, and disk-backed output."""
 
     def _build_controls(self):
         super()._build_controls()
         ttk = self.ttk
         tk = self.tk
 
-        # The base GUI's left-side control panel is the only frame occupying root (0, 0).
         panels = self.root.grid_slaves(row=0, column=0)
         if not panels:
             raise RuntimeError("Tensor Toolkit GUI control panel was not created")
@@ -81,6 +84,7 @@ class TensorToolkitOverviewGUI(TensorToolkitGUI):
             width=12,
         )
         memory_box.grid(row=0, column=1, sticky="e")
+        memory_box.bind("<<ComboboxSelected>>", lambda _event: self._clear_memory_preview())
 
         ttk.Label(memory_frame, text="Tile t-points").grid(row=1, column=0, sticky="w")
         self.tile_points_var = tk.StringVar(value="8")
@@ -90,7 +94,31 @@ class TensorToolkitOverviewGUI(TensorToolkitGUI):
             to=256,
             textvariable=self.tile_points_var,
             width=10,
+            command=self._clear_memory_preview,
         ).grid(row=1, column=1, sticky="e")
+
+        ttk.Label(memory_frame, text="Output storage").grid(row=2, column=0, sticky="w")
+        self.storage_mode_var = tk.StringVar(value="auto")
+        storage_box = ttk.Combobox(
+            memory_frame,
+            textvariable=self.storage_mode_var,
+            values=("auto", "memory", "disk"),
+            state="readonly",
+            width=12,
+        )
+        storage_box.grid(row=2, column=1, sticky="e")
+        storage_box.bind("<<ComboboxSelected>>", lambda _event: self._clear_memory_preview())
+
+        self.storage_path_var = tk.StringVar(value="")
+        ttk.Label(memory_frame, text="Disk result dir").grid(row=3, column=0, sticky="w")
+        ttk.Entry(memory_frame, textvariable=self.storage_path_var, width=15).grid(
+            row=3, column=1, sticky="ew"
+        )
+        ttk.Button(
+            memory_frame,
+            text="Choose…",
+            command=self._choose_storage_directory,
+        ).grid(row=4, column=0, columnspan=2, sticky="ew", pady=(4, 0))
 
         output_frame = ttk.LabelFrame(panel, text="Retained outputs", padding=6)
         output_frame.grid(row=15, column=0, columnspan=2, sticky="ew", pady=4)
@@ -118,11 +146,17 @@ class TensorToolkitOverviewGUI(TensorToolkitGUI):
             panel,
             textvariable=self.memory_preview_var,
             justify="left",
-            wraplength=255,
+            wraplength=270,
         ).grid(row=16, column=0, columnspan=2, sticky="w", pady=(4, 8))
 
-        self.root.geometry("1500x980")
+        self.root.geometry("1520x1020")
         self.root.minsize(1150, 760)
+
+    def _choose_storage_directory(self):
+        target = self.filedialog.askdirectory(title="Choose disk-backed result directory")
+        if target:
+            self.storage_path_var.set(target)
+            self._clear_memory_preview()
 
     def _selected_outputs(self) -> frozenset[str]:
         flags = {name: bool(variable.get()) for name, variable in self.output_vars.items()}
@@ -143,7 +177,22 @@ class TensorToolkitOverviewGUI(TensorToolkitGUI):
             tile_points=tile_points,
         )
 
+    def _storage_settings(self, experiment):
+        requested = self.storage_mode_var.get()
+        raw_path = self.storage_path_var.get().strip()
+        output_path = raw_path or None
+        shape = tuple(axis.points for axis in experiment.axes)
+        selected = select_storage_mode(
+            shape,
+            experiment.outputs,
+            requested_mode=requested,
+            output_path=output_path,
+            limit_fraction=experiment.memory_limit_fraction,
+        )
+        return requested, selected, output_path
+
     def _preflight_for_experiment(self, experiment):
+        _requested, selected_storage, _path = self._storage_settings(experiment)
         shape = tuple(axis.points for axis in experiment.axes)
         return memory_plan(
             shape,
@@ -151,6 +200,7 @@ class TensorToolkitOverviewGUI(TensorToolkitGUI):
             requested_mode=experiment.memory_mode,
             tile_points=experiment.tile_points,
             limit_fraction=experiment.memory_limit_fraction,
+            disk_backed=selected_storage == "disk",
         )
 
     def _clear_memory_preview(self):
@@ -160,7 +210,7 @@ class TensorToolkitOverviewGUI(TensorToolkitGUI):
         try:
             experiment = self._build_experiment()
             plan = self._preflight_for_experiment(experiment)
-        except (ValueError, TypeError, MemoryError) as exc:
+        except (ValueError, TypeError, MemoryError, OSError) as exc:
             self.memory_preview_var.set(f"Preflight failed: {exc}")
             return
         self.memory_preview_var.set(format_memory_plan(plan))
@@ -168,8 +218,11 @@ class TensorToolkitOverviewGUI(TensorToolkitGUI):
     def _start_run(self):
         try:
             experiment = self._build_experiment()
+            requested_storage, selected_storage, output_path = self._storage_settings(experiment)
+            if selected_storage == "disk" and output_path is None:
+                raise ValueError("choose a disk result directory before a disk-backed run")
             plan = self._preflight_for_experiment(experiment)
-        except (ValueError, TypeError, MemoryError) as exc:
+        except (ValueError, TypeError, MemoryError, OSError) as exc:
             self.messagebox.showerror("Simulation preflight failed", str(exc))
             self.memory_preview_var.set(f"Preflight failed: {exc}")
             return
@@ -179,12 +232,19 @@ class TensorToolkitOverviewGUI(TensorToolkitGUI):
         selected_gib = float(plan.get("estimated_selected_bytes", 0)) / 1024**3
         self.run_button.configure(state="disabled")
         self.status_var.set(
-            f"Calculating on CPU; {selected_mode} mode, estimated peak {selected_gib:.2f} GiB…"
+            f"Calculating on CPU; {selected_mode}, {selected_storage} storage, "
+            f"estimated peak {selected_gib:.2f} GiB…"
         )
 
         def worker():
             try:
-                result = run_experiment(experiment)
+                result = run_experiment(
+                    experiment,
+                    output_path=output_path,
+                    storage_mode=requested_storage,
+                )
+                if result.metadata.get("storage", {}).get("mode") == "disk":
+                    save_result(result, output_path)
             except Exception as exc:
                 self.root.after(0, lambda exc=exc: self._run_failed(exc))
                 return
@@ -195,19 +255,35 @@ class TensorToolkitOverviewGUI(TensorToolkitGUI):
     def _run_finished(self, result):
         super()._run_finished(result)
         memory = result.metadata.get("memory", {})
+        storage = result.metadata.get("storage", {})
         if memory:
             self.memory_preview_var.set(format_memory_plan(memory))
             mode = memory.get("selected_mode", "unknown")
+            store = storage.get("mode", "memory")
             validation = result.metadata.get("diagnostics", {}).get("status", "UNKNOWN")
             self.status_var.set(
-                f"Complete: {result.metric_name}; mode {mode}; validation {validation}"
+                f"Complete: {result.metric_name}; mode {mode}; storage {store}; validation {validation}"
             )
+
+    def _save_result(self):
+        if self.result is not None and self.result.metadata.get("storage", {}).get("mode") == "disk":
+            self.messagebox.showinfo(
+                "Disk-backed result",
+                "This result was written incrementally to its selected directory during the run.",
+            )
+            return
+        super()._save_result()
 
     def _open_result(self):
         super()._open_result()
         memory = self.metadata.get("memory", {}) if self.metadata else {}
+        storage = self.metadata.get("storage", {}) if self.metadata else {}
         if memory:
             self.memory_preview_var.set(format_memory_plan(memory))
+        if storage.get("mode") == "disk":
+            self.status_var.set(
+                f"Loaded disk-backed {self.metric_name}; fields remain memory-mapped"
+            )
 
     def _build_workspace(self):
         ttk = self.ttk
@@ -277,7 +353,7 @@ class TensorToolkitOverviewGUI(TensorToolkitGUI):
             return
 
         field_name = self.field_var.get()
-        field = np.asarray(self.fields[field_name])
+        field = np.asanyarray(self.fields[field_name])
         if field.ndim != 6 or field.shape[:2] != (4, 4):
             return
 
