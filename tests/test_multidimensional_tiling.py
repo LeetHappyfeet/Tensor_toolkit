@@ -1,4 +1,4 @@
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 
 import numpy as np
 
@@ -45,7 +45,7 @@ def test_multidimensional_blocks_match_full_grid():
         experiment,
         axes,
         spacings,
-        block_shape=(3, 3, 3, 3),
+        block_shape=(3, 3, 9, 9),
         halo=3,
     )
 
