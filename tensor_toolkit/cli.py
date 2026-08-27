@@ -31,6 +31,12 @@ def _add_memory_arguments(parser: argparse.ArgumentParser) -> None:
         default=8,
         help="core t points per tile in tiled mode (default: 8)",
     )
+    parser.add_argument(
+        "--storage-mode",
+        choices=("auto", "memory", "disk"),
+        default="auto",
+        help="persistent output storage; disk writes fields incrementally as .npy memmaps",
+    )
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -44,7 +50,11 @@ def _parser() -> argparse.ArgumentParser:
 
     run = sub.add_parser("run", help="run a built-in experiment")
     run.add_argument("experiment", choices=sorted(builtins()))
-    run.add_argument("--output", default=None, help="directory for result.npz and metadata.json")
+    run.add_argument(
+        "--output",
+        default=None,
+        help="result directory; required for --storage-mode disk",
+    )
     run.add_argument("--backend", default="cpu", choices=("cpu", "gpu"))
     run.add_argument(
         "--fields",
@@ -95,17 +105,23 @@ def _print_validation(result) -> None:
 
 def _print_memory(result) -> None:
     memory = result.metadata.get("memory", {})
-    if not memory:
-        return
-    estimate = float(memory.get("estimated_selected_bytes", 0)) / 1024**3
-    print(
-        f"Memory: mode={memory.get('selected_mode', 'unknown')} "
-        f"estimated_peak={estimate:.2f} GiB"
-    )
-    if memory.get("selected_mode") == "tiled":
+    storage = result.metadata.get("storage", {})
+    if memory:
+        estimate = float(memory.get("estimated_selected_bytes", 0)) / 1024**3
         print(
-            f"  tile_points={memory.get('tile_points')} halo={memory.get('halo')} "
-            "(t-axis slabs)"
+            f"Memory: mode={memory.get('selected_mode', 'unknown')} "
+            f"estimated_peak={estimate:.2f} GiB"
+        )
+        if memory.get("selected_mode") == "tiled":
+            print(
+                f"  tile_points={memory.get('tile_points')} halo={memory.get('halo')} "
+                "(t-axis slabs)"
+            )
+    if storage:
+        persistent = float(memory.get("persistent_output_bytes", 0)) / 1024**3
+        print(
+            f"Storage: mode={storage.get('mode', 'unknown')} "
+            f"format={storage.get('format', 'unknown')} persistent={persistent:.2f} GiB"
         )
 
 
@@ -140,6 +156,7 @@ def _run(
     memory_mode="auto",
     tile_points=8,
     fields=None,
+    storage_mode="auto",
 ) -> int:
     try:
         experiment = _configured_experiment(
@@ -154,16 +171,28 @@ def _run(
     print("  domain=" + ", ".join(f"[{axis.start:g},{axis.stop:g}]" for axis in experiment.axes))
     print("  outputs=" + ", ".join(sorted(experiment.outputs)))
     try:
-        result = run_experiment(experiment)
-    except MemoryError as exc:
+        result = run_experiment(
+            experiment,
+            output_path=output,
+            storage_mode=storage_mode,
+        )
+    except (MemoryError, OSError, ValueError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 2
     for key, value in result.fields.items():
-        print(f"  {key:14s} shape={value.shape} max|value|={float(abs(value).max()):.6g}")
+        diagnostics = field_diagnostics(value)
+        print(
+            f"  {key:14s} shape={value.shape} "
+            f"max|value|={diagnostics['max_abs']:.6g}"
+        )
     _print_memory(result)
     _print_validation(result)
     if output:
-        print(f"Saved: {save_result(result, output)}")
+        try:
+            print(f"Saved: {save_result(result, output)}")
+        except (OSError, ValueError) as exc:
+            print(f"ERROR finalizing result: {exc}", file=sys.stderr)
+            return 2
     return 0
 
 
@@ -186,15 +215,19 @@ def _inspect(path: str, field: str | None = None, center: bool = False) -> int:
     if axes:
         print("Axes: " + "; ".join(f"{axis[0]:g}..{axis[-1]:g} ({len(axis)})" for axis in axes))
     memory = metadata.get("memory", {})
+    storage = metadata.get("storage", {})
     if memory:
         print(
             f"Execution: {memory.get('selected_mode', 'unknown')} "
             f"(estimated peak {float(memory.get('estimated_selected_bytes', 0))/1024**3:.2f} GiB)"
         )
+    if storage:
+        print(f"Storage: {storage.get('mode', 'unknown')} / {storage.get('format', 'unknown')}")
     print("Fields:")
     for name in selected:
         value = fields[name]
         diagnostics = field_diagnostics(value)
+        # min/max operate directly over mapped pages for disk-backed arrays.
         print(
             f"  {name:14s} shape={value.shape} min={float(value.min()):.6g} "
             f"max={float(value.max()):.6g} max|value|={diagnostics['max_abs']:.6g}"
@@ -247,7 +280,7 @@ def _convergence(name, point_counts, extent, backend) -> int:
         symmetry = field_diagnostics(einstein)["symmetry"]
         spacing = max(result.metadata["spacings"])
         print(
-            f"{points:6d}  {spacing:11.6g}  {float(np.max(np.abs(einstein))):12.6g}  "
+            f"{points:6d}  {spacing:11.6g}  {field_diagnostics(einstein)['max_abs']:12.6g}  "
             f"{symmetry['absolute']:12.6g}  {symmetry['relative']:12.6g}"
         )
     return 0
@@ -292,6 +325,7 @@ def main(argv=None) -> int:
             "Backend: CPU/NumPy float64 (supported)\n"
             "GPU: future upgrade; explicitly unsupported in 0.2.0\n"
             "Memory: preflight + automatic t-slab tiling with 3-cell halos\n"
+            "Storage: NPZ for small runs; disk-backed NPY memmaps for large outputs\n"
             "Pipeline: metric -> inverse -> Christoffel -> streamed Ricci -> scalar -> Einstein -> stress-energy\n"
             "Full Riemann is allocated only when explicitly requested."
         )
@@ -311,6 +345,7 @@ def main(argv=None) -> int:
         args.memory_mode,
         args.tile_points,
         args.fields,
+        args.storage_mode,
     )
 
 
