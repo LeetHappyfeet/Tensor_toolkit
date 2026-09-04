@@ -64,8 +64,8 @@ def test_velocity_verlet_preserves_circular_orbit_and_radius():
 def test_conservation_diagnostics_track_energy_and_angular_momentum():
     # Use two finite masses so the conserved system quantities are non-zero.
     system = System([
-        Body("a", 1.0, [-0.5, 0, 0], [0, -0.5, 0]),
-        Body("b", 1.0, [0.5, 0, 0], [0, 0.5, 0]),
+        Body("a", 1.0, [-0.5, 0, 0], [0, -np.sqrt(0.5), 0]),
+        Body("b", 1.0, [0.5, 0, 0], [0, np.sqrt(0.5), 0]),
     ])
     trajectory = simulate(
         system,
