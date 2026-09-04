@@ -10,6 +10,13 @@ from tensor_toolkit.backends import require_backend
 from tensor_toolkit.diagnostics import field_diagnostics
 from tensor_toolkit.experiment import SUPPORTED_OUTPUTS, run_experiment
 from tensor_toolkit.io import load_result, save_result
+from tensor_toolkit.physics import (
+    run_simulation_experiment,
+    save_simulation_experiment_result,
+    sample_schwarzschild_trajectory,
+    save_schwarzschild_trajectory_samples,
+    simulation_demos,
+)
 from tensor_toolkit.registry import builtins, configure_grid, get_experiment
 
 
@@ -66,6 +73,40 @@ def _parser() -> argparse.ArgumentParser:
     inspect.add_argument("path", help="saved result directory")
     inspect.add_argument("--field", default=None, help="show only one saved field")
     inspect.add_argument("--center", action="store_true", help="print the selected rank-2 field at the grid center")
+
+    simulate = sub.add_parser("simulate", help="run a classical many-body simulation demo")
+    simulate.add_argument("experiment", choices=sorted(simulation_demos()))
+    simulate.add_argument("--output", default=None, help="directory for trajectory.npz and metadata.json")
+    simulate.add_argument("--duration", type=float, default=None, help="override demo duration in seconds")
+    simulate.add_argument("--dt", type=float, default=None, help="override integration timestep in seconds")
+    simulate.add_argument("--method", choices=("rk4", "verlet"), default=None, help="override integration method")
+    simulate.add_argument("--sample-every", type=int, default=None, help="save every Nth trajectory sample")
+    simulate.add_argument(
+        "--schwarzschild",
+        nargs=2,
+        metavar=("PRIMARY", "BODY"),
+        default=None,
+        help="sample BODY along the Newtonian trajectory in a static Schwarzschild field centered on PRIMARY",
+    )
+    simulate.add_argument(
+        "--relativity-samples",
+        type=int,
+        default=5,
+        help="baseline evenly spaced Schwarzschild samples; matching encounter events are also included (default: 5)",
+    )
+    simulate.add_argument(
+        "--gr-fields",
+        nargs="+",
+        choices=sorted(SUPPORTED_OUTPUTS),
+        default=None,
+        help="optional GR tensor fields to evaluate at Schwarzschild sample events",
+    )
+    simulate.add_argument(
+        "--gr-spacing",
+        type=float,
+        default=None,
+        help="uniform local GR stencil spacing in metres for ct/x/y/z",
+    )
 
     convergence = sub.add_parser("convergence", help="run a grid-resolution Einstein-symmetry study")
     convergence.add_argument("experiment", choices=sorted(builtins()))
@@ -274,6 +315,206 @@ def _convergence(name, point_counts, extent, backend) -> int:
     return 0
 
 
+def _simulate_classical(
+    name,
+    output,
+    duration=None,
+    dt=None,
+    method=None,
+    sample_every=None,
+    schwarzschild=None,
+    relativity_samples=5,
+    gr_fields=None,
+    gr_spacing=None,
+) -> int:
+    try:
+        experiment = simulation_demos()[name]
+        updates = {}
+        if duration is not None:
+            if duration <= 0.0:
+                raise ValueError("--duration must be positive")
+            updates["duration"] = float(duration)
+        if dt is not None:
+            if dt <= 0.0:
+                raise ValueError("--dt must be positive")
+            updates["dt"] = float(dt)
+        if method is not None:
+            updates["method"] = method
+        if sample_every is not None:
+            if sample_every < 1:
+                raise ValueError("--sample-every must be at least 1")
+            updates["sample_every"] = int(sample_every)
+        if updates:
+            experiment = replace(experiment, **updates)
+        result = run_simulation_experiment(experiment)
+    except ValueError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 2
+
+    print(f"Classical simulation: {result.name}")
+    print(
+        f"  bodies={result.metadata['body_count']} "
+        f"method={result.metadata['method']} "
+        f"duration={result.metadata['duration']:.6g}s "
+        f"dt={result.metadata['dt']:.6g}s"
+    )
+    for index, body_name in enumerate(result.metadata["body_names"]):
+        start = result.trajectory.positions[0, index]
+        end = result.trajectory.positions[-1, index]
+        print(
+            f"  body[{index}] {body_name}: "
+            f"start={np.array2string(start, precision=6)} "
+            f"end={np.array2string(end, precision=6)}"
+        )
+
+    conservation = result.conservation
+    print("System conservation:")
+    print(f"  energy_relative_drift={conservation.energy_relative_drift:.6g}")
+    print(f"  momentum_absolute_drift={conservation.momentum_absolute_drift:.6g}")
+    print(
+        "  angular_momentum_relative_drift="
+        f"{conservation.angular_momentum_relative_drift:.6g}"
+    )
+
+    if result.test_particles:
+        print("Test-particle invariants:")
+        for name, probe in result.test_particles.items():
+            h0 = np.linalg.norm(probe.specific_angular_momentum[0])
+            print(
+                f"  {name}: orbit={probe.orbit_class} "
+                f"specific_energy={probe.specific_energy[0]:.6g} J/kg "
+                f"energy_drift={probe.specific_energy_relative_drift:.6g} "
+                f"specific_h={h0:.6g} m^2/s "
+                f"h_drift={probe.specific_angular_momentum_relative_drift:.6g}"
+            )
+            print(
+                f"    e={probe.eccentricity:.6g} "
+                f"periapsis={probe.periapsis_distance:.6g} m"
+                + (
+                    f" apoapsis={probe.apoapsis_distance:.6g} m "
+                    f"period={probe.orbital_period:.6g} s"
+                    if probe.orbit_class == "elliptic"
+                    else ""
+                )
+            )
+
+    if result.encounters:
+        print("Encounters:")
+        for name, encounter in result.encounters.items():
+            orbit_class = (
+                result.test_particles[name].orbit_class
+                if name in result.test_particles
+                else "unknown"
+            )
+            angle_label = (
+                "finite_deflection"
+                if orbit_class == "hyperbolic"
+                else "velocity_direction_change"
+            )
+            print(
+                f"  {name}: closest={encounter.closest_approach_distance:.6g} m "
+                f"at t={encounter.closest_approach_time:.6g} s "
+                f"periapsis_speed={encounter.periapsis_relative_speed:.6g} m/s "
+                f"{angle_label}={np.degrees(encounter.deflection_angle):.6g} deg"
+            )
+
+    if result.hyperbolic_references:
+        print("Analytic hyperbolic reference:")
+        for name, reference in result.hyperbolic_references.items():
+            print(
+                f"  {name}: e={reference.eccentricity:.6g} "
+                f"v_inf={reference.v_infinity:.6g} m/s "
+                f"periapsis={reference.periapsis_distance:.6g} m "
+                f"periapsis_speed={reference.periapsis_speed:.6g} m/s "
+                f"asymptotic_deflection={np.degrees(reference.asymptotic_deflection_angle):.6g} deg"
+            )
+            print(
+                f"    errors: periapsis={reference.numerical_periapsis_distance_error:.6g} m "
+                f"periapsis_speed={reference.numerical_periapsis_speed_error:.6g} m/s "
+                f"finite_vs_asymptotic_deflection="
+                f"{np.degrees(reference.finite_window_deflection_error):.6g} deg"
+            )
+
+    if schwarzschild is not None:
+        primary, body = schwarzschild
+        if relativity_samples < 1:
+            print("ERROR: --relativity-samples must be at least 1", file=sys.stderr)
+            return 2
+        if gr_fields is not None and (gr_spacing is None or gr_spacing <= 0.0):
+            print("ERROR: --gr-spacing must be positive when --gr-fields is used", file=sys.stderr)
+            return 2
+        names = result.metadata["body_names"]
+        if primary not in names or body not in names:
+            print(
+                f"ERROR: Schwarzschild bodies must be in simulation; available: {', '.join(names)}",
+                file=sys.stderr,
+            )
+            return 2
+        masses = dict(zip(names, experiment.system.masses))
+        if masses[primary] <= 0.0:
+            print("ERROR: Schwarzschild primary must have positive mass", file=sys.stderr)
+            return 2
+
+        sample_times = np.linspace(
+            result.trajectory.times[0],
+            result.trajectory.times[-1],
+            relativity_samples,
+        )
+        encounter_key = f"{primary}->{body}"
+        if encounter_key in result.encounters:
+            sample_times = np.unique(
+                np.append(
+                    sample_times,
+                    result.encounters[encounter_key].closest_approach_time,
+                )
+            )
+        tensor_outputs = None if gr_fields is None else frozenset(gr_fields)
+        tensor_spacings = None
+        if tensor_outputs is not None:
+            tensor_spacings = (gr_spacing, gr_spacing, gr_spacing, gr_spacing)
+        try:
+            relativity = sample_schwarzschild_trajectory(
+                result.trajectory,
+                primary=primary,
+                body=body,
+                primary_mass=float(masses[primary]),
+                times=sample_times,
+                tensor_outputs=tensor_outputs,
+                tensor_spacings=tensor_spacings,
+            )
+        except ValueError as exc:
+            print(f"ERROR: Schwarzschild sampling failed: {exc}", file=sys.stderr)
+            return 2
+
+        radius = np.linalg.norm(relativity.coordinates[:, 1:], axis=1)
+        print("Schwarzschild sampling:")
+        print(
+            f"  primary={primary} body={body} samples={len(relativity.times)} "
+            f"coordinate_system=(ct,x,y,z)"
+        )
+        for i in range(len(relativity.times)):
+            print(
+                f"  t={relativity.times[i]:.6g}s "
+                f"r_iso={radius[i]:.6g}m "
+                f"dτ/dt={relativity.proper_time_rate[i]:.12g} "
+                f"τ_since_start={relativity.proper_time[i]:.9g}s"
+            )
+        if relativity.tensor_samples is not None:
+            print("  GR fields:")
+            for field_name, values in relativity.tensor_samples.fields.items():
+                print(
+                    f"    {field_name:14s} shape={values.shape} "
+                    f"max|value|={float(np.max(np.abs(values))):.6g}"
+                )
+
+    if output:
+        saved = save_simulation_experiment_result(result, output)
+        if schwarzschild is not None:
+            save_schwarzschild_trajectory_samples(relativity, output)
+        print(f"Saved: {saved}")
+    return 0
+
+
 def _interactive() -> int:
     names = sorted(builtins())
     print("Tensor Toolkit 0.2.0\n")
@@ -320,6 +561,19 @@ def main(argv=None) -> int:
         return 0
     if args.command == "inspect":
         return _inspect(args.path, args.field, args.center)
+    if args.command == "simulate":
+        return _simulate_classical(
+            args.experiment,
+            args.output,
+            args.duration,
+            args.dt,
+            args.method,
+            args.sample_every,
+            args.schwarzschild,
+            args.relativity_samples,
+            args.gr_fields,
+            args.gr_spacing,
+        )
     if args.command == "convergence":
         return _convergence(args.experiment, args.points, args.extent, args.backend)
     if args.command == "visualize":

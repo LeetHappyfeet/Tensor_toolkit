@@ -1,0 +1,190 @@
+import numpy as np
+
+from tensor_toolkit.constants import GRAVITATIONAL_CONSTANT
+from tensor_toolkit.physics import (
+    Body,
+    System,
+    Trajectory,
+    circular_orbit_system,
+    conservation_diagnostics,
+    encounter_diagnostics,
+    hyperbolic_flyby_system,
+    hyperbolic_reference,
+    test_particle_diagnostics,
+    newtonian_gravity_accelerations,
+    simulate,
+)
+
+
+def test_two_body_acceleration_matches_newtonian_gravity():
+    separation = 10.0
+    masses = np.array([2.0, 3.0])
+    positions = np.array([[0.0, 0.0, 0.0], [separation, 0.0, 0.0]])
+    acceleration = newtonian_gravity_accelerations(positions, masses)
+    assert np.isclose(acceleration[0, 0], GRAVITATIONAL_CONSTANT * masses[1] / separation**2)
+    assert np.isclose(acceleration[1, 0], -GRAVITATIONAL_CONSTANT * masses[0] / separation**2)
+    assert np.allclose(acceleration[:, 1:], 0.0)
+
+
+def test_isolated_body_has_zero_acceleration():
+    acceleration = newtonian_gravity_accelerations(
+        np.array([[1.0, 2.0, 3.0]]), np.array([5.0])
+    )
+    assert np.array_equal(acceleration, np.zeros((1, 3)))
+
+
+def test_rk4_preserves_simple_circular_orbit_reasonably():
+    system = System([
+        Body("primary", 1.0, [0, 0, 0], [0, 0, 0]),
+        Body("probe", 0.0, [1, 0, 0], [0, 1, 0]),
+    ])
+    trajectory = simulate(
+        system,
+        duration=2.0 * np.pi,
+        dt=0.01,
+        gravitational_constant=1.0,
+    )
+    final = trajectory.positions[-1, 1]
+    assert np.linalg.norm(final - np.array([1.0, 0.0, 0.0])) < 2e-3
+
+
+def test_velocity_verlet_preserves_circular_orbit_and_radius():
+    system = circular_orbit_system(
+        primary_mass=1.0,
+        radius=1.0,
+        gravitational_constant=1.0,
+    )
+    trajectory = simulate(
+        system,
+        duration=20.0 * np.pi,
+        dt=0.01,
+        method="verlet",
+        gravitational_constant=1.0,
+    )
+    radius = np.linalg.norm(trajectory.positions[:, 1], axis=1)
+    assert np.max(np.abs(radius - 1.0)) < 2e-4
+
+
+def test_conservation_diagnostics_track_energy_and_angular_momentum():
+    # Use two finite masses so the conserved system quantities are non-zero.
+    system = System([
+        Body("a", 1.0, [-0.5, 0, 0], [0, -np.sqrt(0.5), 0]),
+        Body("b", 1.0, [0.5, 0, 0], [0, np.sqrt(0.5), 0]),
+    ])
+    trajectory = simulate(
+        system,
+        duration=4.0 * np.pi,
+        dt=0.005,
+        method="verlet",
+        gravitational_constant=1.0,
+    )
+    diagnostics = conservation_diagnostics(
+        trajectory,
+        system.masses,
+        gravitational_constant=1.0,
+    )
+    assert diagnostics.energy_relative_drift < 2e-4
+    assert diagnostics.momentum_absolute_drift < 1e-12
+    assert diagnostics.angular_momentum_relative_drift < 1e-12
+
+
+def test_flyby_helper_builds_expected_incoming_state():
+    system = hyperbolic_flyby_system(
+        primary_mass=10.0,
+        initial_distance=100.0,
+        impact_parameter=5.0,
+        incoming_speed=3.0,
+    )
+    assert np.allclose(system.positions[1], [-100.0, 5.0, 0.0])
+    assert np.allclose(system.velocities[1], [3.0, 0.0, 0.0])
+    assert system.masses[1] == 0.0
+
+
+def test_encounter_diagnostics_reports_closest_approach_and_turn_angle():
+    times = np.array([0.0, 1.0, 2.0])
+    positions = np.array([
+        [[0, 0, 0], [-2, 1, 0]],
+        [[0, 0, 0], [0, 1, 0]],
+        [[0, 0, 0], [1, 2, 0]],
+    ], dtype=float)
+    velocities = np.array([
+        [[0, 0, 0], [1, 0, 0]],
+        [[0, 0, 0], [1, 1, 0]],
+        [[0, 0, 0], [0, 1, 0]],
+    ], dtype=float)
+    accelerations = np.zeros_like(positions)
+    trajectory = Trajectory(
+        times,
+        positions,
+        velocities,
+        accelerations,
+        ("primary", "probe"),
+    )
+    diagnostics = encounter_diagnostics(trajectory, primary="primary", probe="probe")
+    assert diagnostics.closest_approach_time == 1.0
+    assert diagnostics.closest_approach_distance == 1.0
+    assert np.isclose(diagnostics.deflection_angle, np.pi / 2.0)
+
+
+def test_passive_probe_specific_invariants_are_meaningful():
+    system = System([
+        Body("primary", 1.0, [0, 0, 0], [0, 0, 0]),
+        Body("probe", 0.0, [1, 0, 0], [0, 1, 0]),
+    ])
+    trajectory = simulate(
+        system,
+        duration=2.0 * np.pi,
+        dt=0.01,
+        method="verlet",
+        gravitational_constant=1.0,
+    )
+    diagnostics = test_particle_diagnostics(
+        trajectory,
+        primary="primary",
+        probe="probe",
+        primary_mass=1.0,
+        gravitational_constant=1.0,
+    )
+    assert diagnostics.orbit_class == "elliptic"
+    assert np.isclose(diagnostics.specific_energy[0], -0.5)
+    assert np.isclose(np.linalg.norm(diagnostics.specific_angular_momentum[0]), 1.0)
+    assert np.isclose(diagnostics.eccentricity, 0.0, atol=1e-12)
+    assert np.isclose(diagnostics.semi_major_axis, 1.0)
+    assert np.isclose(diagnostics.periapsis_distance, 1.0)
+    assert np.isclose(diagnostics.apoapsis_distance, 1.0)
+    assert np.isclose(diagnostics.orbital_period, 2.0 * np.pi)
+    assert diagnostics.specific_energy_relative_drift < 1e-4
+    assert diagnostics.specific_angular_momentum_relative_drift < 1e-12
+
+
+def test_hyperbolic_reference_matches_dimensionless_case():
+    system = System([
+        Body("primary", 1.0, [0, 0, 0], [0, 0, 0]),
+        Body("probe", 0.0, [-10, 2, 0], [1, 0, 0]),
+    ])
+    trajectory = simulate(
+        system,
+        duration=30.0,
+        dt=0.002,
+        method="verlet",
+        gravitational_constant=1.0,
+    )
+    reference = hyperbolic_reference(
+        trajectory,
+        primary="primary",
+        probe="probe",
+        primary_mass=1.0,
+        gravitational_constant=1.0,
+    )
+    diagnostics = test_particle_diagnostics(
+        trajectory,
+        primary="primary",
+        probe="probe",
+        primary_mass=1.0,
+        gravitational_constant=1.0,
+    )
+    assert diagnostics.orbit_class == "hyperbolic"
+    assert reference.eccentricity > 1.0
+    assert reference.v_infinity > 0.0
+    assert abs(reference.numerical_periapsis_distance_error) < 2e-3
+    assert abs(reference.numerical_periapsis_speed_error) < 2e-3
