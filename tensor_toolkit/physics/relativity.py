@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
+import json
 
 import numpy as np
 
@@ -172,3 +174,41 @@ def sample_schwarzschild_trajectory(
         proper_time=proper_time,
         tensor_samples=tensor_samples,
     )
+
+
+def save_schwarzschild_trajectory_samples(
+    samples: SchwarzschildTrajectorySamples,
+    output_path,
+) -> Path:
+    """Persist Schwarzschild sampling alongside a classical simulation result."""
+    output = Path(output_path)
+    output.mkdir(parents=True, exist_ok=True)
+
+    arrays = {
+        "times": samples.times,
+        "coordinates": samples.coordinates,
+        "metric": samples.metric,
+        "proper_time_rate": samples.proper_time_rate,
+        "proper_time": samples.proper_time,
+    }
+    if samples.tensor_samples is not None:
+        for name, value in samples.tensor_samples.fields.items():
+            arrays[f"field_{name}"] = value
+    np.savez_compressed(output / "schwarzschild_samples.npz", **arrays)
+
+    metadata = {
+        "primary_name": samples.primary_name,
+        "body_name": samples.body_name,
+        "coordinates": ["ct", "x", "y", "z"],
+        "coordinate_units": "m",
+        "proper_time_units": "s",
+        "tensor_fields": (
+            sorted(samples.tensor_samples.fields)
+            if samples.tensor_samples is not None
+            else []
+        ),
+    }
+    with (output / "schwarzschild_metadata.json").open("w", encoding="utf-8") as handle:
+        json.dump(metadata, handle, indent=2)
+        handle.write("\n")
+    return output
