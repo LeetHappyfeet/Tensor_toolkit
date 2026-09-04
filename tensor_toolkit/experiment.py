@@ -85,8 +85,12 @@ def _need(outputs, *names: str) -> bool:
     return any(name in outputs for name in names)
 
 
-def _compute_fields(metric: np.ndarray, spacings, outputs, *, units: str) -> dict[str, np.ndarray]:
-    """Compute only requested persistent fields, streaming internal curvature where possible."""
+def compute_tensor_fields(metric: np.ndarray, spacings, outputs, *, units: str = "geometrized") -> dict[str, np.ndarray]:
+    """Compute requested GR fields from an already-sampled 4-D metric grid.
+
+    This is the reusable field-evaluation entry point for experiments and for
+    trajectory-centered spacetime stencils.
+    """
     outputs = frozenset(outputs)
     fields: dict[str, np.ndarray] = {}
     if "metric" in outputs:
@@ -163,7 +167,7 @@ def _run_in_memory(experiment: Experiment, axis_values, spacings):
     coordinate_grid = _sparse_coordinates(axis_values)
     metric = experiment.metric.evaluate(coordinate_grid)
     del coordinate_grid
-    fields = _compute_fields(metric, spacings, experiment.outputs, units=experiment.stress_energy_units)
+    fields = compute_tensor_fields(metric, spacings, experiment.outputs, units=experiment.stress_energy_units)
     diagnostics = _diagnostics(metric, fields)
     return fields, diagnostics
 
@@ -223,7 +227,7 @@ def _run_tiled(
         metric_core = _crop_core_nd(metric, core_starts, core_stops, halo_starts)
         metric_diag = merge_field_diagnostics(metric_diag, field_diagnostics(metric_core))
 
-        local_fields = _compute_fields(
+        local_fields = compute_tensor_fields(
             metric, spacings, experiment.outputs, units=experiment.stress_energy_units
         )
         for name, local in local_fields.items():
@@ -335,4 +339,7 @@ def run_experiment(
     )
 
 
-__all__ = ["Axis", "Experiment", "ExperimentResult", "SUPPORTED_OUTPUTS", "run_experiment"]
+__all__ = [
+    "Axis", "Experiment", "ExperimentResult", "SUPPORTED_OUTPUTS",
+    "compute_tensor_fields", "run_experiment",
+]
