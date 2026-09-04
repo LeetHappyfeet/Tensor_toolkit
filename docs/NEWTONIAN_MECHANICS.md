@@ -136,6 +136,30 @@ flyby = hyperbolic_flyby_system(
 The flyby helper uses the specified finite-distance initial speed. It does not
 silently reinterpret that value as asymptotic velocity at infinity.
 
+After integration, encounter diagnostics can report closest approach, periapsis
+relative speed, initial/final relative speed, and the net deflection angle:
+
+```python
+from tensor_toolkit.physics import encounter_diagnostics, simulate
+
+trajectory = simulate(
+    flyby,
+    duration=1.0e6,
+    dt=10.0,
+    method="verlet",
+)
+
+encounter = encounter_diagnostics(
+    trajectory,
+    primary="primary",
+    probe="probe",
+)
+
+print(encounter.closest_approach_distance)
+print(encounter.periapsis_relative_speed)
+print(encounter.deflection_angle)
+```
+
 ## Next steps
 
 The next classical milestone is a CLI-accessible orbit/flyby experiment that
