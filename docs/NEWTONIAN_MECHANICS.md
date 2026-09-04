@@ -11,6 +11,9 @@ The initial supported model is intentionally narrow:
 - Cartesian point masses.
 - Newtonian N-body gravity.
 - Fixed-step fourth-order Runge-Kutta integration.
+- Symplectic velocity-Verlet integration for long orbital runs.
+- Conservation diagnostics for energy, linear momentum, and angular momentum.
+- Reusable circular-orbit and hyperbolic-flyby initial-condition helpers.
 - Arbitrary-time interpolation along a simulated trajectory.
 - Direct metric evaluation at trajectory events.
 - Local 4-D tensor stencils centered on trajectory events.
@@ -36,6 +39,7 @@ trajectory = simulate(
     system,
     duration=365.25 * 86400,
     dt=3600,
+    method="verlet",
 )
 ```
 
@@ -91,9 +95,51 @@ coordinate transform appropriate to that metric and chosen unit convention.
 This is deliberately explicit because silently mixing SI and geometrized
 coordinates would produce numerically valid but physically meaningless output.
 
+## Conservation diagnostics
+
+The simulator can now report Newtonian conservation behavior directly:
+
+```python
+from tensor_toolkit.physics import conservation_diagnostics
+
+diagnostics = conservation_diagnostics(
+    trajectory,
+    system.masses,
+)
+
+print(diagnostics.energy_relative_drift)
+print(diagnostics.momentum_absolute_drift)
+print(diagnostics.angular_momentum_relative_drift)
+```
+
+These diagnostics are intended to make integrator and timestep quality visible
+before trajectories are used as inputs to relativistic analysis.
+
+## Reusable orbit and flyby setups
+
+```python
+from tensor_toolkit.physics import circular_orbit_system, hyperbolic_flyby_system
+
+orbit = circular_orbit_system(
+    primary_mass=1.98847e30,
+    radius=1.495978707e11,
+)
+
+flyby = hyperbolic_flyby_system(
+    primary_mass=1.89813e27,
+    initial_distance=5.0e9,
+    impact_parameter=7.0e8,
+    incoming_speed=15_000.0,
+)
+```
+
+The flyby helper uses the specified finite-distance initial speed. It does not
+silently reinterpret that value as asymptotic velocity at infinity.
+
 ## Next steps
 
-The next classical milestones are conservation diagnostics, a symplectic
-velocity-Verlet integrator, reusable two-body/orbital initial-condition helpers,
-and CLI simulation commands. The next relativity milestone is observer-frame
-sampling along the generated worldline, including proper time and four-velocity.
+The next classical milestone is a CLI-accessible orbit/flyby experiment that
+records closest approach, deflection angle, periapsis speed, conservation
+diagnostics, and trajectory samples. The next relativity milestone is to feed
+those same events into Schwarzschild and later Kerr metric sampling, followed by
+observer-frame proper time and four-velocity calculations.
