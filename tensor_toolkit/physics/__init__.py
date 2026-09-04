@@ -18,6 +18,13 @@ from .diagnostics import (
     test_particle_diagnostics,
 )
 from .demos import demo_flyby_experiment, simulation_demos
+from .dynamics import (
+    CompositeDynamics,
+    ConstantThrust,
+    DynamicsModel,
+    NewtonianGravity,
+)
+from .events import CollisionDetector, EventDetector, SimulationEvent
 from .experiments import (
     SimulationExperiment,
     SimulationExperimentResult,
@@ -32,13 +39,21 @@ from .relativity import (
     sample_schwarzschild_trajectory,
     save_schwarzschild_trajectory_samples,
 )
-from .state import Body, System
+from .state import Body, System, SystemState
 from .trajectory import Trajectory
 
 __all__ = [
     "Body",
     "System",
+    "SystemState",
     "Trajectory",
+    "DynamicsModel",
+    "NewtonianGravity",
+    "ConstantThrust",
+    "CompositeDynamics",
+    "EventDetector",
+    "SimulationEvent",
+    "CollisionDetector",
     "MetricSamples",
     "TensorEventSamples",
     "ConservationDiagnostics",
