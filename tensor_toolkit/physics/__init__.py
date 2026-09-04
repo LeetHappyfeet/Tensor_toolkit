@@ -13,6 +13,13 @@ from .diagnostics import (
     conservation_diagnostics,
     encounter_diagnostics,
 )
+from .demos import demo_flyby_experiment, simulation_demos
+from .experiments import (
+    SimulationExperiment,
+    SimulationExperimentResult,
+    run_simulation_experiment,
+    save_simulation_experiment_result,
+)
 from .gravity import newtonian_gravity_accelerations
 from .integrators import simulate
 from .orbits import circular_orbit_system, hyperbolic_flyby_system
@@ -27,11 +34,17 @@ __all__ = [
     "TensorEventSamples",
     "ConservationDiagnostics",
     "EncounterDiagnostics",
+    "SimulationExperiment",
+    "SimulationExperimentResult",
     "newtonian_gravity_accelerations",
     "conservation_diagnostics",
     "encounter_diagnostics",
     "circular_orbit_system",
     "hyperbolic_flyby_system",
+    "demo_flyby_experiment",
+    "simulation_demos",
+    "run_simulation_experiment",
+    "save_simulation_experiment_result",
     "simulate",
     "trajectory_spacetime_coordinates",
     "sample_metric_along_trajectory",
