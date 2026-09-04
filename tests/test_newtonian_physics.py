@@ -4,8 +4,10 @@ from tensor_toolkit.constants import GRAVITATIONAL_CONSTANT
 from tensor_toolkit.physics import (
     Body,
     System,
+    Trajectory,
     circular_orbit_system,
     conservation_diagnostics,
+    encounter_diagnostics,
     hyperbolic_flyby_system,
     newtonian_gravity_accelerations,
     simulate,
@@ -94,3 +96,29 @@ def test_flyby_helper_builds_expected_incoming_state():
     assert np.allclose(system.positions[1], [-100.0, 5.0, 0.0])
     assert np.allclose(system.velocities[1], [3.0, 0.0, 0.0])
     assert system.masses[1] == 0.0
+
+
+def test_encounter_diagnostics_reports_closest_approach_and_turn_angle():
+    times = np.array([0.0, 1.0, 2.0])
+    positions = np.array([
+        [[0, 0, 0], [-2, 1, 0]],
+        [[0, 0, 0], [0, 1, 0]],
+        [[0, 0, 0], [1, 2, 0]],
+    ], dtype=float)
+    velocities = np.array([
+        [[0, 0, 0], [1, 0, 0]],
+        [[0, 0, 0], [1, 1, 0]],
+        [[0, 0, 0], [0, 1, 0]],
+    ], dtype=float)
+    accelerations = np.zeros_like(positions)
+    trajectory = Trajectory(
+        times,
+        positions,
+        velocities,
+        accelerations,
+        ("primary", "probe"),
+    )
+    diagnostics = encounter_diagnostics(trajectory, primary="primary", probe="probe")
+    assert diagnostics.closest_approach_time == 1.0
+    assert diagnostics.closest_approach_distance == 1.0
+    assert np.isclose(diagnostics.deflection_angle, np.pi / 2.0)
