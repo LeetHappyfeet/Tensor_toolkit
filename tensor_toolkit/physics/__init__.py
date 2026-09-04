@@ -27,6 +27,7 @@ from .experiments import (
 from .gravity import newtonian_gravity_accelerations
 from .integrators import simulate
 from .orbits import circular_orbit_system, hyperbolic_flyby_system
+from .relativity import SchwarzschildTrajectorySamples, sample_schwarzschild_trajectory
 from .state import Body, System
 from .trajectory import Trajectory
 
@@ -42,6 +43,7 @@ __all__ = [
     "TestParticleDiagnostics",
     "SimulationExperiment",
     "SimulationExperimentResult",
+    "SchwarzschildTrajectorySamples",
     "newtonian_gravity_accelerations",
     "conservation_diagnostics",
     "encounter_diagnostics",
@@ -53,6 +55,7 @@ __all__ = [
     "simulation_demos",
     "run_simulation_experiment",
     "save_simulation_experiment_result",
+    "sample_schwarzschild_trajectory",
     "simulate",
     "trajectory_spacetime_coordinates",
     "sample_metric_along_trajectory",
