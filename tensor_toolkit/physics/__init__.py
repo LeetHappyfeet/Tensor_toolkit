@@ -24,7 +24,12 @@ from .dynamics import (
     DynamicsModel,
     NewtonianGravity,
 )
-from .events import CollisionDetector, EventDetector, SimulationEvent
+from .events import (
+    CollisionDetector,
+    DistanceCrossingDetector,
+    EventDetector,
+    SimulationEvent,
+)
 from .experiments import (
     SimulationExperiment,
     SimulationExperimentResult,
@@ -57,6 +62,7 @@ __all__ = [
     "EventDetector",
     "SimulationEvent",
     "CollisionDetector",
+    "DistanceCrossingDetector",
     "MetricSamples",
     "TensorEventSamples",
     "ConservationDiagnostics",
