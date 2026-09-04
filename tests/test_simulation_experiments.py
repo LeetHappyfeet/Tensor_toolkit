@@ -31,6 +31,10 @@ def test_simulation_experiment_supports_multiple_bodies(tmp_path):
     assert result.metadata["body_count"] == 3
     assert set(result.encounters) == {"primary->probe_a", "primary->probe_b"}
     assert set(result.test_particles) == {"primary->probe_a", "primary->probe_b"}
+    assert all(
+        probe.orbit_class in {"elliptic", "parabolic", "hyperbolic"}
+        for probe in result.test_particles.values()
+    )
 
     output = save_simulation_experiment_result(result, tmp_path / "run")
     saved = np.load(output / "trajectory.npz")
@@ -41,3 +45,7 @@ def test_simulation_experiment_supports_multiple_bodies(tmp_path):
     assert metadata["body_count"] == 3
     assert set(metadata["encounters"]) == {"primary->probe_a", "primary->probe_b"}
     assert set(metadata["test_particles"]) == {"primary->probe_a", "primary->probe_b"}
+    assert all(
+        item["orbit_class"] in {"elliptic", "parabolic", "hyperbolic"}
+        for item in metadata["test_particles"].values()
+    )
