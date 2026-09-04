@@ -70,3 +70,62 @@ def conservation_diagnostics(
         momentum_absolute_drift=float(np.max(np.linalg.norm(momentum - momentum[0], axis=1))),
         angular_momentum_relative_drift=_relative_drift(angular),
     )
+
+
+@dataclass(frozen=True)
+class EncounterDiagnostics:
+    primary_name: str
+    probe_name: str
+    closest_approach_time: float
+    closest_approach_distance: float
+    periapsis_relative_speed: float
+    initial_relative_speed: float
+    final_relative_speed: float
+    deflection_angle: float
+
+def encounter_diagnostics(
+    trajectory: Trajectory,
+    *,
+    primary: str | int = 0,
+    probe: str | int = 1,
+) -> EncounterDiagnostics:
+    """Summarize a two-body encounter from the simulated relative trajectory.
+
+    Deflection angle is the angle in radians between the initial and final
+    relative-velocity directions over the supplied trajectory interval.
+    """
+    primary_index = trajectory.body_index(primary)
+    probe_index = trajectory.body_index(probe)
+    if primary_index == probe_index:
+        raise ValueError("primary and probe must identify different bodies")
+
+    relative_position = (
+        trajectory.positions[:, probe_index] - trajectory.positions[:, primary_index]
+    )
+    relative_velocity = (
+        trajectory.velocities[:, probe_index] - trajectory.velocities[:, primary_index]
+    )
+    distance = np.linalg.norm(relative_position, axis=1)
+    closest_index = int(np.argmin(distance))
+    speeds = np.linalg.norm(relative_velocity, axis=1)
+
+    initial_speed = float(speeds[0])
+    final_speed = float(speeds[-1])
+    if initial_speed == 0.0 or final_speed == 0.0:
+        raise ValueError("deflection angle requires non-zero initial and final relative speeds")
+    cosine = float(
+        np.dot(relative_velocity[0], relative_velocity[-1])
+        / (initial_speed * final_speed)
+    )
+    deflection = float(np.arccos(np.clip(cosine, -1.0, 1.0)))
+
+    return EncounterDiagnostics(
+        primary_name=trajectory.body_names[primary_index],
+        probe_name=trajectory.body_names[probe_index],
+        closest_approach_time=float(trajectory.times[closest_index]),
+        closest_approach_distance=float(distance[closest_index]),
+        periapsis_relative_speed=float(speeds[closest_index]),
+        initial_relative_speed=initial_speed,
+        final_relative_speed=final_speed,
+        deflection_angle=deflection,
+    )
