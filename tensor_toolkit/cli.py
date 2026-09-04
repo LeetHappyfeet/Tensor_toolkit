@@ -329,13 +329,24 @@ def _simulate_classical(name, output, duration=None, dt=None, method=None, sampl
         )
 
     conservation = result.conservation
-    print("Conservation:")
+    print("System conservation:")
     print(f"  energy_relative_drift={conservation.energy_relative_drift:.6g}")
     print(f"  momentum_absolute_drift={conservation.momentum_absolute_drift:.6g}")
     print(
         "  angular_momentum_relative_drift="
         f"{conservation.angular_momentum_relative_drift:.6g}"
     )
+
+    if result.test_particles:
+        print("Test-particle invariants:")
+        for name, probe in result.test_particles.items():
+            h0 = np.linalg.norm(probe.specific_angular_momentum[0])
+            print(
+                f"  {name}: specific_energy={probe.specific_energy[0]:.6g} J/kg "
+                f"energy_drift={probe.specific_energy_relative_drift:.6g} "
+                f"specific_h={h0:.6g} m^2/s "
+                f"h_drift={probe.specific_angular_momentum_relative_drift:.6g}"
+            )
 
     if result.encounters:
         print("Encounters:")
@@ -344,7 +355,24 @@ def _simulate_classical(name, output, duration=None, dt=None, method=None, sampl
                 f"  {name}: closest={encounter.closest_approach_distance:.6g} m "
                 f"at t={encounter.closest_approach_time:.6g} s "
                 f"periapsis_speed={encounter.periapsis_relative_speed:.6g} m/s "
-                f"deflection={np.degrees(encounter.deflection_angle):.6g} deg"
+                f"finite_deflection={np.degrees(encounter.deflection_angle):.6g} deg"
+            )
+
+    if result.hyperbolic_references:
+        print("Analytic hyperbolic reference:")
+        for name, reference in result.hyperbolic_references.items():
+            print(
+                f"  {name}: e={reference.eccentricity:.6g} "
+                f"v_inf={reference.v_infinity:.6g} m/s "
+                f"periapsis={reference.periapsis_distance:.6g} m "
+                f"periapsis_speed={reference.periapsis_speed:.6g} m/s "
+                f"asymptotic_deflection={np.degrees(reference.asymptotic_deflection_angle):.6g} deg"
+            )
+            print(
+                f"    errors: periapsis={reference.numerical_periapsis_distance_error:.6g} m "
+                f"periapsis_speed={reference.numerical_periapsis_speed_error:.6g} m/s "
+                f"finite_vs_asymptotic_deflection="
+                f"{np.degrees(reference.finite_window_deflection_error):.6g} deg"
             )
 
     if output:
