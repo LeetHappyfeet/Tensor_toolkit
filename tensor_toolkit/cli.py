@@ -13,6 +13,7 @@ from tensor_toolkit.io import load_result, save_result
 from tensor_toolkit.physics import (
     run_simulation_experiment,
     save_simulation_experiment_result,
+    sample_schwarzschild_trajectory,
     simulation_demos,
 )
 from tensor_toolkit.registry import builtins, configure_grid, get_experiment
@@ -79,6 +80,32 @@ def _parser() -> argparse.ArgumentParser:
     simulate.add_argument("--dt", type=float, default=None, help="override integration timestep in seconds")
     simulate.add_argument("--method", choices=("rk4", "verlet"), default=None, help="override integration method")
     simulate.add_argument("--sample-every", type=int, default=None, help="save every Nth trajectory sample")
+    simulate.add_argument(
+        "--schwarzschild",
+        nargs=2,
+        metavar=("PRIMARY", "BODY"),
+        default=None,
+        help="sample BODY along the Newtonian trajectory in a static Schwarzschild field centered on PRIMARY",
+    )
+    simulate.add_argument(
+        "--relativity-samples",
+        type=int,
+        default=5,
+        help="number of evenly spaced Schwarzschild samples (default: 5)",
+    )
+    simulate.add_argument(
+        "--gr-fields",
+        nargs="+",
+        choices=sorted(SUPPORTED_OUTPUTS),
+        default=None,
+        help="optional GR tensor fields to evaluate at Schwarzschild sample events",
+    )
+    simulate.add_argument(
+        "--gr-spacing",
+        type=float,
+        default=None,
+        help="uniform local GR stencil spacing in metres for ct/x/y/z",
+    )
 
     convergence = sub.add_parser("convergence", help="run a grid-resolution Einstein-symmetry study")
     convergence.add_argument("experiment", choices=sorted(builtins()))
@@ -287,7 +314,18 @@ def _convergence(name, point_counts, extent, backend) -> int:
     return 0
 
 
-def _simulate_classical(name, output, duration=None, dt=None, method=None, sample_every=None) -> int:
+def _simulate_classical(
+    name,
+    output,
+    duration=None,
+    dt=None,
+    method=None,
+    sample_every=None,
+    schwarzschild=None,
+    relativity_samples=5,
+    gr_fields=None,
+    gr_spacing=None,
+) -> int:
     try:
         experiment = simulation_demos()[name]
         updates = {}
@@ -375,6 +413,70 @@ def _simulate_classical(name, output, duration=None, dt=None, method=None, sampl
                 f"{np.degrees(reference.finite_window_deflection_error):.6g} deg"
             )
 
+    if schwarzschild is not None:
+        primary, body = schwarzschild
+        if relativity_samples < 1:
+            print("ERROR: --relativity-samples must be at least 1", file=sys.stderr)
+            return 2
+        if gr_fields is not None and (gr_spacing is None or gr_spacing <= 0.0):
+            print("ERROR: --gr-spacing must be positive when --gr-fields is used", file=sys.stderr)
+            return 2
+        names = result.metadata["body_names"]
+        if primary not in names or body not in names:
+            print(
+                f"ERROR: Schwarzschild bodies must be in simulation; available: {', '.join(names)}",
+                file=sys.stderr,
+            )
+            return 2
+        masses = dict(zip(names, experiment.system.masses))
+        if masses[primary] <= 0.0:
+            print("ERROR: Schwarzschild primary must have positive mass", file=sys.stderr)
+            return 2
+
+        sample_times = np.linspace(
+            result.trajectory.times[0],
+            result.trajectory.times[-1],
+            relativity_samples,
+        )
+        tensor_outputs = None if gr_fields is None else frozenset(gr_fields)
+        tensor_spacings = None
+        if tensor_outputs is not None:
+            tensor_spacings = (gr_spacing, gr_spacing, gr_spacing, gr_spacing)
+        try:
+            relativity = sample_schwarzschild_trajectory(
+                result.trajectory,
+                primary=primary,
+                body=body,
+                primary_mass=float(masses[primary]),
+                times=sample_times,
+                tensor_outputs=tensor_outputs,
+                tensor_spacings=tensor_spacings,
+            )
+        except ValueError as exc:
+            print(f"ERROR: Schwarzschild sampling failed: {exc}", file=sys.stderr)
+            return 2
+
+        radius = np.linalg.norm(relativity.coordinates[:, 1:], axis=1)
+        print("Schwarzschild sampling:")
+        print(
+            f"  primary={primary} body={body} samples={len(relativity.times)} "
+            f"coordinate_system=(ct,x,y,z)"
+        )
+        for i in range(len(relativity.times)):
+            print(
+                f"  t={relativity.times[i]:.6g}s "
+                f"r_iso={radius[i]:.6g}m "
+                f"dτ/dt={relativity.proper_time_rate[i]:.12g} "
+                f"τ_since_first={relativity.proper_time[i]:.9g}s"
+            )
+        if relativity.tensor_samples is not None:
+            print("  GR fields:")
+            for field_name, values in relativity.tensor_samples.fields.items():
+                print(
+                    f"    {field_name:14s} shape={values.shape} "
+                    f"max|value|={float(np.max(np.abs(values))):.6g}"
+                )
+
     if output:
         saved = save_simulation_experiment_result(result, output)
         print(f"Saved: {saved}")
@@ -435,6 +537,10 @@ def main(argv=None) -> int:
             args.dt,
             args.method,
             args.sample_every,
+            args.schwarzschild,
+            args.relativity_samples,
+            args.gr_fields,
+            args.gr_spacing,
         )
     if args.command == "convergence":
         return _convergence(args.experiment, args.points, args.extent, args.backend)
