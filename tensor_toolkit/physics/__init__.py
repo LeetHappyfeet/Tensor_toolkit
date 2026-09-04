@@ -7,7 +7,12 @@ from .bridge import (
     sample_tensors_along_trajectory,
     trajectory_spacetime_coordinates,
 )
-from .diagnostics import ConservationDiagnostics, conservation_diagnostics
+from .diagnostics import (
+    ConservationDiagnostics,
+    EncounterDiagnostics,
+    conservation_diagnostics,
+    encounter_diagnostics,
+)
 from .gravity import newtonian_gravity_accelerations
 from .integrators import simulate
 from .orbits import circular_orbit_system, hyperbolic_flyby_system
@@ -21,8 +26,10 @@ __all__ = [
     "MetricSamples",
     "TensorEventSamples",
     "ConservationDiagnostics",
+    "EncounterDiagnostics",
     "newtonian_gravity_accelerations",
     "conservation_diagnostics",
+    "encounter_diagnostics",
     "circular_orbit_system",
     "hyperbolic_flyby_system",
     "simulate",
