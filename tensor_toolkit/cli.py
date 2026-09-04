@@ -10,6 +10,11 @@ from tensor_toolkit.backends import require_backend
 from tensor_toolkit.diagnostics import field_diagnostics
 from tensor_toolkit.experiment import SUPPORTED_OUTPUTS, run_experiment
 from tensor_toolkit.io import load_result, save_result
+from tensor_toolkit.physics import (
+    run_simulation_experiment,
+    save_simulation_experiment_result,
+    simulation_demos,
+)
 from tensor_toolkit.registry import builtins, configure_grid, get_experiment
 
 
@@ -66,6 +71,14 @@ def _parser() -> argparse.ArgumentParser:
     inspect.add_argument("path", help="saved result directory")
     inspect.add_argument("--field", default=None, help="show only one saved field")
     inspect.add_argument("--center", action="store_true", help="print the selected rank-2 field at the grid center")
+
+    simulate = sub.add_parser("simulate", help="run a classical many-body simulation demo")
+    simulate.add_argument("experiment", choices=sorted(simulation_demos()))
+    simulate.add_argument("--output", default=None, help="directory for trajectory.npz and metadata.json")
+    simulate.add_argument("--duration", type=float, default=None, help="override demo duration in seconds")
+    simulate.add_argument("--dt", type=float, default=None, help="override integration timestep in seconds")
+    simulate.add_argument("--method", choices=("rk4", "verlet"), default=None, help="override integration method")
+    simulate.add_argument("--sample-every", type=int, default=None, help="save every Nth trajectory sample")
 
     convergence = sub.add_parser("convergence", help="run a grid-resolution Einstein-symmetry study")
     convergence.add_argument("experiment", choices=sorted(builtins()))
@@ -274,6 +287,72 @@ def _convergence(name, point_counts, extent, backend) -> int:
     return 0
 
 
+def _simulate_classical(name, output, duration=None, dt=None, method=None, sample_every=None) -> int:
+    try:
+        experiment = simulation_demos()[name]
+        updates = {}
+        if duration is not None:
+            if duration <= 0.0:
+                raise ValueError("--duration must be positive")
+            updates["duration"] = float(duration)
+        if dt is not None:
+            if dt <= 0.0:
+                raise ValueError("--dt must be positive")
+            updates["dt"] = float(dt)
+        if method is not None:
+            updates["method"] = method
+        if sample_every is not None:
+            if sample_every < 1:
+                raise ValueError("--sample-every must be at least 1")
+            updates["sample_every"] = int(sample_every)
+        if updates:
+            experiment = replace(experiment, **updates)
+        result = run_simulation_experiment(experiment)
+    except ValueError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 2
+
+    print(f"Classical simulation: {result.name}")
+    print(
+        f"  bodies={result.metadata['body_count']} "
+        f"method={result.metadata['method']} "
+        f"duration={result.metadata['duration']:.6g}s "
+        f"dt={result.metadata['dt']:.6g}s"
+    )
+    for index, body_name in enumerate(result.metadata["body_names"]):
+        start = result.trajectory.positions[0, index]
+        end = result.trajectory.positions[-1, index]
+        print(
+            f"  body[{index}] {body_name}: "
+            f"start={np.array2string(start, precision=6)} "
+            f"end={np.array2string(end, precision=6)}"
+        )
+
+    conservation = result.conservation
+    print("Conservation:")
+    print(f"  energy_relative_drift={conservation.energy_relative_drift:.6g}")
+    print(f"  momentum_absolute_drift={conservation.momentum_absolute_drift:.6g}")
+    print(
+        "  angular_momentum_relative_drift="
+        f"{conservation.angular_momentum_relative_drift:.6g}"
+    )
+
+    if result.encounters:
+        print("Encounters:")
+        for name, encounter in result.encounters.items():
+            print(
+                f"  {name}: closest={encounter.closest_approach_distance:.6g} m "
+                f"at t={encounter.closest_approach_time:.6g} s "
+                f"periapsis_speed={encounter.periapsis_relative_speed:.6g} m/s "
+                f"deflection={np.degrees(encounter.deflection_angle):.6g} deg"
+            )
+
+    if output:
+        saved = save_simulation_experiment_result(result, output)
+        print(f"Saved: {saved}")
+    return 0
+
+
 def _interactive() -> int:
     names = sorted(builtins())
     print("Tensor Toolkit 0.2.0\n")
@@ -320,6 +399,15 @@ def main(argv=None) -> int:
         return 0
     if args.command == "inspect":
         return _inspect(args.path, args.field, args.center)
+    if args.command == "simulate":
+        return _simulate_classical(
+            args.experiment,
+            args.output,
+            args.duration,
+            args.dt,
+            args.method,
+            args.sample_every,
+        )
     if args.command == "convergence":
         return _convergence(args.experiment, args.points, args.extent, args.backend)
     if args.command == "visualize":
