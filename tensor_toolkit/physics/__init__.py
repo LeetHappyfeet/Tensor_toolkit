@@ -41,12 +41,15 @@ from .relativity import (
 )
 from .state import Body, System, SystemState
 from .trajectory import Trajectory
+from .worldline import Worldline, trajectory_worldline
 
 __all__ = [
     "Body",
     "System",
     "SystemState",
     "Trajectory",
+    "Worldline",
+    "trajectory_worldline",
     "DynamicsModel",
     "NewtonianGravity",
     "ConstantThrust",
