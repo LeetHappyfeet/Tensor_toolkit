@@ -14,6 +14,7 @@ from tensor_toolkit.physics import (
     run_simulation_experiment,
     save_simulation_experiment_result,
     sample_schwarzschild_trajectory,
+    save_schwarzschild_trajectory_samples,
     simulation_demos,
 )
 from tensor_toolkit.registry import builtins, configure_grid, get_experiment
@@ -479,6 +480,8 @@ def _simulate_classical(
 
     if output:
         saved = save_simulation_experiment_result(result, output)
+        if schwarzschild is not None:
+            save_schwarzschild_trajectory_samples(relativity, output)
         print(f"Saved: {saved}")
     return 0
 
