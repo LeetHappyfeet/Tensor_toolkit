@@ -10,8 +10,12 @@ from .bridge import (
 from .diagnostics import (
     ConservationDiagnostics,
     EncounterDiagnostics,
+    HyperbolicReference,
+    TestParticleDiagnostics,
     conservation_diagnostics,
     encounter_diagnostics,
+    hyperbolic_reference,
+    test_particle_diagnostics,
 )
 from .demos import demo_flyby_experiment, simulation_demos
 from .experiments import (
@@ -34,11 +38,15 @@ __all__ = [
     "TensorEventSamples",
     "ConservationDiagnostics",
     "EncounterDiagnostics",
+    "HyperbolicReference",
+    "TestParticleDiagnostics",
     "SimulationExperiment",
     "SimulationExperimentResult",
     "newtonian_gravity_accelerations",
     "conservation_diagnostics",
     "encounter_diagnostics",
+    "hyperbolic_reference",
+    "test_particle_diagnostics",
     "circular_orbit_system",
     "hyperbolic_flyby_system",
     "demo_flyby_experiment",
