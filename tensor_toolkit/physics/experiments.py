@@ -159,10 +159,16 @@ def save_simulation_experiment_result(
         key: {
             "primary_name": value.primary_name,
             "probe_name": value.probe_name,
+            "orbit_class": value.orbit_class,
             "specific_energy_initial": float(value.specific_energy[0]),
             "specific_energy_relative_drift": value.specific_energy_relative_drift,
             "specific_angular_momentum_initial": value.specific_angular_momentum[0].tolist(),
             "specific_angular_momentum_relative_drift": value.specific_angular_momentum_relative_drift,
+            "eccentricity": value.eccentricity,
+            "semi_major_axis": value.semi_major_axis,
+            "periapsis_distance": value.periapsis_distance,
+            "apoapsis_distance": value.apoapsis_distance,
+            "orbital_period": value.orbital_period,
         }
         for key, value in result.test_particles.items()
     }
