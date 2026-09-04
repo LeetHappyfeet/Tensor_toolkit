@@ -254,3 +254,72 @@ The finite-window deflection reported from a simulation is intentionally kept
 separate from the analytic asymptotic scattering angle. A finite trajectory may
 begin and end while the probe is still measurably accelerated by the primary,
 so those two angles should not be expected to match exactly.
+
+
+## Schwarzschild relativity bridge
+
+A validated Newtonian trajectory can now be sampled in a static Schwarzschild
+background without changing the classical motion. Tensor Toolkit uses the
+Schwarzschild metric in isotropic Cartesian coordinates so the classical
+Cartesian trajectory can be used directly.
+
+The metric coordinates are:
+
+```text
+(ct, x, y, z)
+```
+
+with all four coordinates measured in metres. The metric components are
+dimensionless. For a selected primary, the sampled body position is expressed
+relative to that primary before metric evaluation.
+
+For the built-in flyby:
+
+```bash
+tensor-toolkit simulate demo-flyby \
+    --schwarzschild jupiter probe \
+    --relativity-samples 5
+```
+
+This reports the isotropic radius, proper-time rate `dτ/dt`, and accumulated
+proper time along the Newtonian trajectory. Proper time is integrated on the
+full Newtonian timestep history, not merely across the displayed GR samples.
+
+If the selected pair has an encounter diagnostic, closest approach is
+automatically included in the Schwarzschild sample times even when it does not
+fall on the evenly spaced sample grid.
+
+The same bridge can invoke the existing finite-difference GR tensor pipeline:
+
+```bash
+tensor-toolkit simulate demo-flyby \
+    --schwarzschild jupiter probe \
+    --relativity-samples 5 \
+    --gr-fields metric christoffel ricci einstein \
+    --gr-spacing 1000000 \
+    --output results/demo-flyby-gr
+```
+
+`--gr-spacing` is the local stencil spacing in metres for each of
+`(ct, x, y, z)`. Tensor evaluation uses a local 3x3x3x3 spacetime stencil at
+each selected event and then retains the center value.
+
+When an output directory is provided, the classical files are accompanied by:
+
+```text
+schwarzschild_samples.npz
+schwarzschild_metadata.json
+```
+
+The Schwarzschild bridge is deliberately one-way at this stage. It evaluates
+relativistic quantities along the already validated Newtonian trajectory; it
+does not yet replace that trajectory with a geodesic solution.
+
+### Current physical limitation
+
+A Schwarzschild spacetime represents a single isolated, non-rotating spherical
+mass. Selecting one body as the primary therefore treats that body as the static
+background source for the GR sampling. Other Newtonian bodies may still exist
+in the classical simulation, but their masses are not yet combined into an
+exact many-body GR spacetime. Extending the dynamics to post-Newtonian and
+eventually numerical-relativity coupling is a later stage.
