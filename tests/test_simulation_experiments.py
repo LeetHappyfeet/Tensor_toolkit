@@ -30,6 +30,7 @@ def test_simulation_experiment_supports_multiple_bodies(tmp_path):
     assert result.trajectory.positions.shape[1:] == (3, 3)
     assert result.metadata["body_count"] == 3
     assert set(result.encounters) == {"primary->probe_a", "primary->probe_b"}
+    assert set(result.test_particles) == {"primary->probe_a", "primary->probe_b"}
 
     output = save_simulation_experiment_result(result, tmp_path / "run")
     saved = np.load(output / "trajectory.npz")
@@ -39,3 +40,4 @@ def test_simulation_experiment_supports_multiple_bodies(tmp_path):
     metadata = json.loads((output / "metadata.json").read_text())
     assert metadata["body_count"] == 3
     assert set(metadata["encounters"]) == {"primary->probe_a", "primary->probe_b"}
+    assert set(metadata["test_particles"]) == {"primary->probe_a", "primary->probe_b"}
