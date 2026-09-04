@@ -23,6 +23,17 @@ def _rk4_step(state, dt, masses, *, gravitational_constant, softening):
     k4 = _derivative(state + dt * k3, masses, **kwargs)
     return state + (dt / 6.0) * (k1 + 2.0 * k2 + 2.0 * k3 + k4)
 
+def _velocity_verlet_step(positions, velocities, accelerations, dt, masses, *, gravitational_constant, softening):
+    next_positions = positions + velocities * dt + 0.5 * accelerations * dt**2
+    next_accelerations = newtonian_gravity_accelerations(
+        next_positions,
+        masses,
+        gravitational_constant=gravitational_constant,
+        softening=softening,
+    )
+    next_velocities = velocities + 0.5 * (accelerations + next_accelerations) * dt
+    return next_positions, next_velocities, next_accelerations
+
 def simulate(
     system: System,
     *,
@@ -32,14 +43,15 @@ def simulate(
     gravitational_constant: float | None = None,
     softening: float = 0.0,
 ) -> Trajectory:
-    """Integrate an N-body Newtonian system using fixed-step RK4."""
+    """Integrate an N-body Newtonian system with RK4 or velocity-Verlet."""
     from tensor_toolkit.constants import GRAVITATIONAL_CONSTANT
     duration = float(duration)
     dt = float(dt)
     if duration <= 0.0 or dt <= 0.0:
         raise ValueError("duration and dt must be positive")
-    if method.lower() != "rk4":
-        raise ValueError("supported integration method: 'rk4'")
+    method = method.lower()
+    if method not in {"rk4", "verlet"}:
+        raise ValueError("supported integration methods: 'rk4', 'verlet'")
     G = GRAVITATIONAL_CONSTANT if gravitational_constant is None else float(gravitational_constant)
 
     steps = int(np.ceil(duration / dt))
@@ -57,11 +69,26 @@ def simulate(
 
     for step in range(steps):
         step_dt = float(times[step + 1] - times[step])
-        state = _rk4_step(state, step_dt, system.masses, gravitational_constant=G, softening=softening)
-        positions[step + 1] = state[:n]
-        velocities[step + 1] = state[n:]
-        accelerations[step + 1] = newtonian_gravity_accelerations(
-            positions[step + 1], system.masses, gravitational_constant=G, softening=softening
-        )
+        if method == "rk4":
+            state = _rk4_step(state, step_dt, system.masses, gravitational_constant=G, softening=softening)
+            positions[step + 1] = state[:n]
+            velocities[step + 1] = state[n:]
+            accelerations[step + 1] = newtonian_gravity_accelerations(
+                positions[step + 1], system.masses, gravitational_constant=G, softening=softening
+            )
+        else:
+            p, v, a = _velocity_verlet_step(
+                positions[step],
+                velocities[step],
+                accelerations[step],
+                step_dt,
+                system.masses,
+                gravitational_constant=G,
+                softening=softening,
+            )
+            positions[step + 1] = p
+            velocities[step + 1] = v
+            accelerations[step + 1] = a
+            state = np.concatenate((p, v), axis=0)
 
     return Trajectory(times, positions, velocities, accelerations, system.names)
