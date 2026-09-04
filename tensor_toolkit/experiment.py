@@ -92,6 +92,11 @@ def compute_tensor_fields(metric: np.ndarray, spacings, outputs, *, units: str =
     trajectory-centered spacetime stencils.
     """
     outputs = frozenset(outputs)
+    unknown = set(outputs) - SUPPORTED_OUTPUTS
+    if unknown:
+        raise ValueError(f"unsupported tensor outputs: {sorted(unknown)}")
+    if not outputs:
+        raise ValueError("at least one tensor output is required")
     fields: dict[str, np.ndarray] = {}
     if "metric" in outputs:
         fields["metric"] = metric
