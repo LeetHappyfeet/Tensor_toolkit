@@ -69,3 +69,67 @@ class CollisionDetector:
                         )
                     )
         return tuple(events)
+
+
+@dataclass(frozen=True)
+class DistanceCrossingDetector:
+    """Detect entry to or exit from a spherical distance threshold."""
+
+    primary: str
+    body: str
+    radius: float
+    direction: str = "enter"
+    kind: str = "distance_crossing"
+
+    def __post_init__(self) -> None:
+        radius = float(self.radius)
+        if not np.isfinite(radius) or radius <= 0.0:
+            raise ValueError("distance threshold radius must be finite and positive")
+        direction = self.direction.lower()
+        if direction not in {"enter", "exit"}:
+            raise ValueError("direction must be 'enter' or 'exit'")
+        if self.primary == self.body:
+            raise ValueError("primary and body must be different")
+        object.__setattr__(self, "radius", radius)
+        object.__setattr__(self, "direction", direction)
+
+    def detect(
+        self,
+        previous_time: float,
+        previous_state: SystemState,
+        time: float,
+        state: SystemState,
+        system: System,
+    ) -> tuple[SimulationEvent, ...]:
+        del previous_time
+        try:
+            primary_index = system.names.index(self.primary)
+            body_index = system.names.index(self.body)
+        except ValueError as exc:
+            raise KeyError("distance-crossing body is not present in the system") from exc
+
+        previous_distance = float(
+            np.linalg.norm(
+                previous_state.positions[body_index]
+                - previous_state.positions[primary_index]
+            )
+        )
+        distance = float(
+            np.linalg.norm(state.positions[body_index] - state.positions[primary_index])
+        )
+        entered = previous_distance > self.radius and distance <= self.radius
+        exited = previous_distance < self.radius and distance >= self.radius
+        crossed = entered if self.direction == "enter" else exited
+        if not crossed:
+            return ()
+        return (
+            SimulationEvent(
+                time=float(time),
+                kind=self.kind,
+                bodies=(self.primary, self.body),
+                details={
+                    "distance": distance,
+                    "threshold_radius": self.radius,
+                },
+            ),
+        )
