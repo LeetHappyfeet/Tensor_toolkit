@@ -167,3 +167,54 @@ records closest approach, deflection angle, periapsis speed, conservation
 diagnostics, and trajectory samples. The next relativity milestone is to feed
 those same events into Schwarzschild and later Kerr metric sampling, followed by
 observer-frame proper time and four-velocity calculations.
+
+
+## Classical simulation CLI
+
+The classical simulation runner is now separate from the GR grid experiment
+runner and is designed around an arbitrary number of bodies:
+
+```bash
+tensor-toolkit simulate demo-flyby
+```
+
+The built-in flyby demo can save a reusable run directory:
+
+```bash
+tensor-toolkit simulate demo-flyby --output results/demo-flyby
+```
+
+Optional overrides are available for integration studies:
+
+```bash
+tensor-toolkit simulate demo-flyby \
+    --duration 700000 \
+    --dt 10 \
+    --method verlet \
+    --sample-every 100 \
+    --output results/demo-flyby-fine
+```
+
+The saved `trajectory.npz` contains arrays with the following layout:
+
+```text
+times          (T,)
+positions      (T, N, 3)
+velocities     (T, N, 3)
+accelerations  (T, N, 3)
+body_names     (N,)
+```
+
+where `N` is the number of moving or passive bodies in the experiment. This
+layout is intentionally not specialized to two-body motion. Future experiments
+can include stars, planets, moons, spacecraft, debris, or other point masses in
+the same integrated system.
+
+`metadata.json` stores system-wide conservation diagnostics and any explicitly
+requested pairwise encounter diagnostics. Pairwise diagnostics are therefore an
+analysis layer over the many-body trajectory rather than a limitation of the
+simulation model.
+
+The current built-in `demo-flyby` is a Jupiter-scale passive-probe encounter.
+Its purpose is to establish a reproducible classical reference trajectory that
+can later be sampled through Schwarzschild, Kerr, and other relativistic metrics.
