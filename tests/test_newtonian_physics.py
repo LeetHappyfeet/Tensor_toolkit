@@ -9,6 +9,8 @@ from tensor_toolkit.physics import (
     conservation_diagnostics,
     encounter_diagnostics,
     hyperbolic_flyby_system,
+    hyperbolic_reference,
+    test_particle_diagnostics,
     newtonian_gravity_accelerations,
     simulate,
 )
@@ -122,3 +124,53 @@ def test_encounter_diagnostics_reports_closest_approach_and_turn_angle():
     assert diagnostics.closest_approach_time == 1.0
     assert diagnostics.closest_approach_distance == 1.0
     assert np.isclose(diagnostics.deflection_angle, np.pi / 2.0)
+
+
+def test_passive_probe_specific_invariants_are_meaningful():
+    system = System([
+        Body("primary", 1.0, [0, 0, 0], [0, 0, 0]),
+        Body("probe", 0.0, [1, 0, 0], [0, 1, 0]),
+    ])
+    trajectory = simulate(
+        system,
+        duration=2.0 * np.pi,
+        dt=0.01,
+        method="verlet",
+        gravitational_constant=1.0,
+    )
+    diagnostics = test_particle_diagnostics(
+        trajectory,
+        primary="primary",
+        probe="probe",
+        primary_mass=1.0,
+        gravitational_constant=1.0,
+    )
+    assert np.isclose(diagnostics.specific_energy[0], -0.5)
+    assert np.isclose(np.linalg.norm(diagnostics.specific_angular_momentum[0]), 1.0)
+    assert diagnostics.specific_energy_relative_drift < 1e-4
+    assert diagnostics.specific_angular_momentum_relative_drift < 1e-12
+
+
+def test_hyperbolic_reference_matches_dimensionless_case():
+    system = System([
+        Body("primary", 1.0, [0, 0, 0], [0, 0, 0]),
+        Body("probe", 0.0, [-10, 2, 0], [1, 0, 0]),
+    ])
+    trajectory = simulate(
+        system,
+        duration=30.0,
+        dt=0.002,
+        method="verlet",
+        gravitational_constant=1.0,
+    )
+    reference = hyperbolic_reference(
+        trajectory,
+        primary="primary",
+        probe="probe",
+        primary_mass=1.0,
+        gravitational_constant=1.0,
+    )
+    assert reference.eccentricity > 1.0
+    assert reference.v_infinity > 0.0
+    assert abs(reference.numerical_periapsis_distance_error) < 2e-3
+    assert abs(reference.numerical_periapsis_speed_error) < 2e-3
