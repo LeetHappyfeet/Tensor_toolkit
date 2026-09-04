@@ -8,7 +8,16 @@ import json
 
 import numpy as np
 
-from .diagnostics import ConservationDiagnostics, EncounterDiagnostics, conservation_diagnostics, encounter_diagnostics
+from .diagnostics import (
+    ConservationDiagnostics,
+    EncounterDiagnostics,
+    HyperbolicReference,
+    TestParticleDiagnostics,
+    conservation_diagnostics,
+    encounter_diagnostics,
+    hyperbolic_reference,
+    test_particle_diagnostics,
+)
 from .integrators import simulate
 from .state import System
 from .trajectory import Trajectory
@@ -45,6 +54,8 @@ class SimulationExperimentResult:
     trajectory: Trajectory
     conservation: ConservationDiagnostics
     encounters: dict[str, EncounterDiagnostics]
+    test_particles: dict[str, TestParticleDiagnostics]
+    hyperbolic_references: dict[str, HyperbolicReference]
     metadata: dict[str, object]
 
 
@@ -69,19 +80,44 @@ def run_simulation_experiment(
         **({} if G is None else {"gravitational_constant": G}),
         softening=softening,
     )
-    encounters = {
-        f"{primary}->{probe}": encounter_diagnostics(
+    encounters = {}
+    test_particles = {}
+    hyperbolic_references = {}
+    masses_by_name = dict(zip(experiment.system.names, experiment.system.masses))
+
+    for primary, probe in experiment.encounters:
+        key = f"{primary}->{probe}"
+        encounters[key] = encounter_diagnostics(
             trajectory,
             primary=primary,
             probe=probe,
         )
-        for primary, probe in experiment.encounters
-    }
+        if masses_by_name[probe] == 0.0 and masses_by_name[primary] > 0.0:
+            test_particles[key] = test_particle_diagnostics(
+                trajectory,
+                primary=primary,
+                probe=probe,
+                primary_mass=float(masses_by_name[primary]),
+                **({} if G is None else {"gravitational_constant": G}),
+            )
+            try:
+                hyperbolic_references[key] = hyperbolic_reference(
+                    trajectory,
+                    primary=primary,
+                    probe=probe,
+                    primary_mass=float(masses_by_name[primary]),
+                    **({} if G is None else {"gravitational_constant": G}),
+                )
+            except ValueError:
+                pass
+
     return SimulationExperimentResult(
         name=experiment.name,
         trajectory=trajectory,
         conservation=conservation,
         encounters=encounters,
+        test_particles=test_particles,
+        hyperbolic_references=hyperbolic_references,
         metadata={
             "method": experiment.method,
             "duration": float(experiment.duration),
@@ -118,6 +154,32 @@ def save_simulation_experiment_result(
         "energy_relative_drift": result.conservation.energy_relative_drift,
         "momentum_absolute_drift": result.conservation.momentum_absolute_drift,
         "angular_momentum_relative_drift": result.conservation.angular_momentum_relative_drift,
+    }
+    metadata["test_particles"] = {
+        key: {
+            "primary_name": value.primary_name,
+            "probe_name": value.probe_name,
+            "specific_energy_initial": float(value.specific_energy[0]),
+            "specific_energy_relative_drift": value.specific_energy_relative_drift,
+            "specific_angular_momentum_initial": value.specific_angular_momentum[0].tolist(),
+            "specific_angular_momentum_relative_drift": value.specific_angular_momentum_relative_drift,
+        }
+        for key, value in result.test_particles.items()
+    }
+    metadata["hyperbolic_references"] = {
+        key: {
+            "primary_name": value.primary_name,
+            "probe_name": value.probe_name,
+            "eccentricity": value.eccentricity,
+            "v_infinity": value.v_infinity,
+            "periapsis_distance": value.periapsis_distance,
+            "periapsis_speed": value.periapsis_speed,
+            "asymptotic_deflection_angle": value.asymptotic_deflection_angle,
+            "numerical_periapsis_distance_error": value.numerical_periapsis_distance_error,
+            "numerical_periapsis_speed_error": value.numerical_periapsis_speed_error,
+            "finite_window_deflection_error": value.finite_window_deflection_error,
+        }
+        for key, value in result.hyperbolic_references.items()
     }
     metadata["encounters"] = {
         key: {
