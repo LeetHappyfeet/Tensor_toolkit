@@ -381,20 +381,41 @@ def _simulate_classical(
         for name, probe in result.test_particles.items():
             h0 = np.linalg.norm(probe.specific_angular_momentum[0])
             print(
-                f"  {name}: specific_energy={probe.specific_energy[0]:.6g} J/kg "
+                f"  {name}: orbit={probe.orbit_class} "
+                f"specific_energy={probe.specific_energy[0]:.6g} J/kg "
                 f"energy_drift={probe.specific_energy_relative_drift:.6g} "
                 f"specific_h={h0:.6g} m^2/s "
                 f"h_drift={probe.specific_angular_momentum_relative_drift:.6g}"
+            )
+            print(
+                f"    e={probe.eccentricity:.6g} "
+                f"periapsis={probe.periapsis_distance:.6g} m"
+                + (
+                    f" apoapsis={probe.apoapsis_distance:.6g} m "
+                    f"period={probe.orbital_period:.6g} s"
+                    if probe.orbit_class == "elliptic"
+                    else ""
+                )
             )
 
     if result.encounters:
         print("Encounters:")
         for name, encounter in result.encounters.items():
+            orbit_class = (
+                result.test_particles[name].orbit_class
+                if name in result.test_particles
+                else "unknown"
+            )
+            angle_label = (
+                "finite_deflection"
+                if orbit_class == "hyperbolic"
+                else "velocity_direction_change"
+            )
             print(
                 f"  {name}: closest={encounter.closest_approach_distance:.6g} m "
                 f"at t={encounter.closest_approach_time:.6g} s "
                 f"periapsis_speed={encounter.periapsis_relative_speed:.6g} m/s "
-                f"finite_deflection={np.degrees(encounter.deflection_angle):.6g} deg"
+                f"{angle_label}={np.degrees(encounter.deflection_angle):.6g} deg"
             )
 
     if result.hyperbolic_references:
