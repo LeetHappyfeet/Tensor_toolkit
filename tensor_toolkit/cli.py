@@ -92,7 +92,7 @@ def _parser() -> argparse.ArgumentParser:
         "--relativity-samples",
         type=int,
         default=5,
-        help="number of evenly spaced Schwarzschild samples (default: 5)",
+        help="baseline evenly spaced Schwarzschild samples; matching encounter events are also included (default: 5)",
     )
     simulate.add_argument(
         "--gr-fields",
@@ -439,6 +439,14 @@ def _simulate_classical(
             result.trajectory.times[-1],
             relativity_samples,
         )
+        encounter_key = f"{primary}->{body}"
+        if encounter_key in result.encounters:
+            sample_times = np.unique(
+                np.append(
+                    sample_times,
+                    result.encounters[encounter_key].closest_approach_time,
+                )
+            )
         tensor_outputs = None if gr_fields is None else frozenset(gr_fields)
         tensor_spacings = None
         if tensor_outputs is not None:
@@ -468,7 +476,7 @@ def _simulate_classical(
                 f"  t={relativity.times[i]:.6g}s "
                 f"r_iso={radius[i]:.6g}m "
                 f"dτ/dt={relativity.proper_time_rate[i]:.12g} "
-                f"τ_since_first={relativity.proper_time[i]:.9g}s"
+                f"τ_since_start={relativity.proper_time[i]:.9g}s"
             )
         if relativity.tensor_samples is not None:
             print("  GR fields:")
