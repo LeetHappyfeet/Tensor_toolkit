@@ -3,6 +3,7 @@
 Tensor Toolkit is an experimental scientific-computing package for classical and relativistic physics simulation. It combines Newtonian many-body trajectory integration with a validated general-relativity tensor pipeline, allowing moving bodies and test particles to be followed through classical simulations and sampled in spacetime metrics.
 
 The current development direction is a validated CPU reference pipeline, a Newtonian point-mass dynamics layer, and bridges between simulated trajectories and relativistic spacetime calculations. Legacy symbolic, plotting, and GPU-era code remains in the repository for migration/reference purposes, but it is not the authoritative execution path.
+<img width="1920" height="1017" alt="python_nt60fyL2VS" src="https://github.com/user-attachments/assets/02f5bb28-b256-4136-ae66-e6caa7cbcfdc" />
 
 ## Current GR pipeline
 
