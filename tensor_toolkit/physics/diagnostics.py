@@ -25,10 +25,16 @@ class ConservationDiagnostics:
 class TestParticleDiagnostics:
     primary_name: str
     probe_name: str
+    orbit_class: str
     specific_energy: np.ndarray
     specific_angular_momentum: np.ndarray
     specific_energy_relative_drift: float
     specific_angular_momentum_relative_drift: float
+    eccentricity: float
+    semi_major_axis: float | None
+    periapsis_distance: float
+    apoapsis_distance: float | None
+    orbital_period: float | None
 
 
 @dataclass(frozen=True)
@@ -180,15 +186,45 @@ def test_particle_diagnostics(
         relative_velocity,
     )
 
+    energy0 = float(specific_energy[0])
+    h0 = float(np.linalg.norm(specific_angular_momentum[0]))
+    eccentricity = float(np.sqrt(max(0.0, 1.0 + 2.0 * energy0 * h0**2 / mu**2)))
+    tolerance = max(1e-12, abs(energy0) * 1e-12)
+    if energy0 < -tolerance:
+        orbit_class = "elliptic"
+        semi_major_axis = float(-mu / (2.0 * energy0))
+        periapsis_distance = float(semi_major_axis * (1.0 - eccentricity))
+        apoapsis_distance = float(semi_major_axis * (1.0 + eccentricity))
+        orbital_period = float(2.0 * np.pi * np.sqrt(semi_major_axis**3 / mu))
+    elif energy0 > tolerance:
+        orbit_class = "hyperbolic"
+        semi_major_axis = float(-mu / (2.0 * energy0))
+        periapsis_distance = float(h0**2 / (mu * (1.0 + eccentricity)))
+        apoapsis_distance = None
+        orbital_period = None
+    else:
+        orbit_class = "parabolic"
+        semi_major_axis = None
+        eccentricity = 1.0
+        periapsis_distance = float(h0**2 / (2.0 * mu))
+        apoapsis_distance = None
+        orbital_period = None
+
     return TestParticleDiagnostics(
         primary_name=trajectory.body_names[primary_index],
         probe_name=trajectory.body_names[probe_index],
+        orbit_class=orbit_class,
         specific_energy=specific_energy,
         specific_angular_momentum=specific_angular_momentum,
         specific_energy_relative_drift=_relative_drift(specific_energy),
         specific_angular_momentum_relative_drift=_relative_drift(
             specific_angular_momentum
         ),
+        eccentricity=eccentricity,
+        semi_major_axis=semi_major_axis,
+        periapsis_distance=periapsis_distance,
+        apoapsis_distance=apoapsis_distance,
+        orbital_period=orbital_period,
     )
 
 
