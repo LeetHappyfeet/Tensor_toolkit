@@ -1,8 +1,8 @@
 # Tensor Toolkit
 
-Tensor Toolkit is an experimental scientific-computing package for calculating and inspecting general-relativity tensor fields on four-dimensional coordinate grids.
+Tensor Toolkit is an experimental scientific-computing package for classical and relativistic physics simulation. It combines Newtonian many-body trajectory integration with a validated general-relativity tensor pipeline, allowing moving bodies and test particles to be followed through classical simulations and sampled in spacetime metrics.
 
-The current development direction is a validated CPU reference pipeline plus a metric tensor simulator. Legacy symbolic, plotting, and GPU-era code remains in the repository for migration/reference purposes, but it is not the authoritative execution path.
+The current development direction is a validated CPU reference pipeline, a Newtonian point-mass dynamics layer, and bridges between simulated trajectories and relativistic spacetime calculations. Legacy symbolic, plotting, and GPU-era code remains in the repository for migration/reference purposes, but it is not the authoritative execution path.
 
 ## Current GR pipeline
 
@@ -67,6 +67,45 @@ tensor-toolkit convergence de-sitter --points 5 7 9
 tensor-toolkit convergence alcubierre --points 5 7 9
 ```
 
+## Newtonian mechanics and relativity bridge
+
+The Development branch now includes a classical point-mass simulation layer designed to provide physically meaningful trajectories for the relativistic engine.
+
+Current capabilities include:
+
+- Newtonian N-body gravity with massive bodies and passive test particles,
+- velocity-Verlet and RK4 trajectory integration,
+- reusable orbital and flyby initial conditions,
+- energy, momentum, and angular-momentum diagnostics,
+- passive-probe specific energy and angular-momentum validation,
+- elliptic, parabolic, and hyperbolic orbit classification,
+- bound-orbit elements and analytic hyperbolic reference calculations,
+- pairwise closest-approach and encounter diagnostics,
+- arbitrary-time trajectory sampling, and
+- trajectory-to-metric and local tensor sampling.
+
+Run the built-in Jupiter/probe experiment with:
+
+```text
+tensor-toolkit simulate demo-flyby
+```
+
+A Newtonian trajectory can also be sampled in a Schwarzschild spacetime without changing the classical motion:
+
+```text
+tensor-toolkit simulate demo-flyby --schwarzschild jupiter probe --relativity-samples 5
+```
+
+The bridge uses Schwarzschild isotropic Cartesian coordinates `(ct, x, y, z)`, allowing the Cartesian Newtonian trajectory to feed directly into metric evaluation. Proper time is integrated along the trajectory, and selected events such as closest approach can be passed through the existing GR finite-difference tensor pipeline:
+
+```text
+tensor-toolkit simulate demo-flyby --schwarzschild jupiter probe --relativity-samples 5 --gr-fields metric christoffel ricci einstein --gr-spacing 1000000
+```
+
+This is currently a one-way coupling: Newtonian dynamics generates the trajectory and GR evaluates the spacetime along it. Schwarzschild sampling treats one selected massive body as an isolated, non-rotating spherical source; the project does not yet solve a self-consistent many-body relativistic spacetime.
+
+See `docs/NEWTONIAN_MECHANICS.md` for the classical simulation and relativity-bridge details.
+
 ## Metric Tensor Simulator
 
 Launch the desktop simulator with:
@@ -102,7 +141,7 @@ Tensor Toolkit is still research/development software. A successful run is not t
 
 Minkowski vacuum is the basic exact sanity check. Curved metrics are being used for analytic and convergence validation. The CLI and GUI surface numerical symmetry warnings rather than hiding them.
 
-The current simulator samples a metric field over `(t, x, y, z)`. It is not yet a full numerical-relativity evolution code: it does not evolve ADM/BSSN initial data or self-consistently couple moving matter back into spacetime.
+The GR grid simulator samples metric fields over `(t, x, y, z)`, while the classical layer evolves moving bodies over time and can feed selected trajectory events into metric/tensor evaluation. Tensor Toolkit is not yet a full numerical-relativity evolution code: it does not evolve ADM/BSSN initial data or self-consistently couple moving matter back into spacetime.
 
 ## Tests
 
