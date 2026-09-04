@@ -218,3 +218,39 @@ simulation model.
 The current built-in `demo-flyby` is a Jupiter-scale passive-probe encounter.
 Its purpose is to establish a reproducible classical reference trajectory that
 can later be sampled through Schwarzschild, Kerr, and other relativistic metrics.
+
+
+## Passive test-particle validation
+
+A zero-mass probe does not contribute to the system's total Newtonian energy,
+linear momentum, or angular momentum. For that reason, zero-valued system
+conservation diagnostics are not sufficient validation for passive spacecraft.
+
+Tensor Toolkit now computes probe-specific orbital invariants for explicitly
+requested massive-primary -> zero-mass-probe encounters:
+
+```text
+specific orbital energy
+specific angular momentum
+relative specific-energy drift
+relative specific-angular-momentum drift
+```
+
+For unbound encounters, the simulator also derives the analytic Newtonian
+hyperbolic reference orbit from the initial state and reports:
+
+```text
+eccentricity
+asymptotic velocity v_inf
+analytic periapsis distance
+analytic periapsis speed
+analytic asymptotic deflection angle
+numerical periapsis error
+numerical periapsis-speed error
+finite-window vs asymptotic deflection difference
+```
+
+The finite-window deflection reported from a simulation is intentionally kept
+separate from the analytic asymptotic scattering angle. A finite trajectory may
+begin and end while the probe is still measurably accelerated by the primary,
+so those two angles should not be expected to match exactly.
