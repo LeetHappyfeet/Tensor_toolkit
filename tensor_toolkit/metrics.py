@@ -7,6 +7,8 @@ from typing import Protocol
 
 import numpy as np
 
+from tensor_toolkit.constants import GRAVITATIONAL_CONSTANT, SPEED_OF_LIGHT
+
 
 class Metric(Protocol):
     """A spacetime metric that can be sampled on a four-dimensional grid."""
@@ -96,4 +98,56 @@ class AlcubierreMetric:
         return g
 
 
-__all__ = ["Metric", "MinkowskiMetric", "DeSitterFlatMetric", "AlcubierreMetric"]
+@dataclass(frozen=True)
+class SchwarzschildIsotropicMetric:
+    """Schwarzschild exterior in isotropic Cartesian coordinates.
+
+    Coordinates are (ct, x, y, z), all measured in metres, and metric
+    components are dimensionless. The isotropic radius rho must remain outside
+    the horizon rho = GM/(2 c^2).
+    """
+
+    mass_kg: float
+    name: str = "Schwarzschild (isotropic Cartesian)"
+    coordinates: tuple[str, str, str, str] = ("ct", "x", "y", "z")
+
+    @property
+    def geometric_mass(self) -> float:
+        mass = float(self.mass_kg)
+        if mass <= 0.0:
+            raise ValueError("mass_kg must be positive")
+        return GRAVITATIONAL_CONSTANT * mass / SPEED_OF_LIGHT**2
+
+    @property
+    def isotropic_horizon_radius(self) -> float:
+        return 0.5 * self.geometric_mass
+
+    def evaluate(self, coordinate_grid: tuple[np.ndarray, ...]) -> np.ndarray:
+        _, x, y, z = coordinate_grid
+        rho = np.sqrt(x**2 + y**2 + z**2)
+        horizon = self.isotropic_horizon_radius
+        if np.any(rho <= horizon):
+            raise ValueError(
+                "Schwarzschild isotropic coordinates require rho > GM/(2 c^2)"
+            )
+
+        u = self.geometric_mass / (2.0 * rho)
+        lapse2 = ((1.0 - u) / (1.0 + u)) ** 2
+        spatial = (1.0 + u) ** 4
+        shape = _grid_shape(coordinate_grid)
+
+        g = np.zeros((4, 4, *shape), dtype=np.float64)
+        g[0, 0] = -lapse2
+        g[1, 1] = spatial
+        g[2, 2] = spatial
+        g[3, 3] = spatial
+        return g
+
+
+__all__ = [
+    "Metric",
+    "MinkowskiMetric",
+    "DeSitterFlatMetric",
+    "AlcubierreMetric",
+    "SchwarzschildIsotropicMetric",
+]
