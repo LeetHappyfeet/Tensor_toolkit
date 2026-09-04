@@ -323,3 +323,23 @@ background source for the GR sampling. Other Newtonian bodies may still exist
 in the classical simulation, but their masses are not yet combined into an
 exact many-body GR spacetime. Extending the dynamics to post-Newtonian and
 eventually numerical-relativity coupling is a later stage.
+
+
+## Orbit classification cleanup
+
+Passive test-particle encounters are now classified from their specific orbital
+energy before the CLI chooses how to describe the motion:
+
+```text
+specific energy < 0  -> elliptic / bound
+specific energy ~ 0  -> parabolic
+specific energy > 0  -> hyperbolic / unbound
+```
+
+For bound elliptic motion, Tensor Toolkit now reports eccentricity, semi-major
+axis, periapsis distance, apoapsis distance, and orbital period.
+
+The angle between the initial and final velocity directions is only labeled
+`finite_deflection` for hyperbolic trajectories. For bound or otherwise
+non-hyperbolic runs it is labeled `velocity_direction_change` so it is not
+mistaken for a scattering angle.
