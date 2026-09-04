@@ -145,8 +145,14 @@ def test_passive_probe_specific_invariants_are_meaningful():
         primary_mass=1.0,
         gravitational_constant=1.0,
     )
+    assert diagnostics.orbit_class == "elliptic"
     assert np.isclose(diagnostics.specific_energy[0], -0.5)
     assert np.isclose(np.linalg.norm(diagnostics.specific_angular_momentum[0]), 1.0)
+    assert np.isclose(diagnostics.eccentricity, 0.0, atol=1e-12)
+    assert np.isclose(diagnostics.semi_major_axis, 1.0)
+    assert np.isclose(diagnostics.periapsis_distance, 1.0)
+    assert np.isclose(diagnostics.apoapsis_distance, 1.0)
+    assert np.isclose(diagnostics.orbital_period, 2.0 * np.pi)
     assert diagnostics.specific_energy_relative_drift < 1e-4
     assert diagnostics.specific_angular_momentum_relative_drift < 1e-12
 
@@ -170,6 +176,14 @@ def test_hyperbolic_reference_matches_dimensionless_case():
         primary_mass=1.0,
         gravitational_constant=1.0,
     )
+    diagnostics = test_particle_diagnostics(
+        trajectory,
+        primary="primary",
+        probe="probe",
+        primary_mass=1.0,
+        gravitational_constant=1.0,
+    )
+    assert diagnostics.orbit_class == "hyperbolic"
     assert reference.eccentricity > 1.0
     assert reference.v_infinity > 0.0
     assert abs(reference.numerical_periapsis_distance_error) < 2e-3
