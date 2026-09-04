@@ -96,14 +96,43 @@ def sample_schwarzschild_trajectory(
         raise ValueError("sampled trajectory is not timelike in Schwarzschild spacetime")
     proper_time_rate = np.sqrt(interval_rate2)
 
+    # Integrate proper time on the complete Newtonian timestep history so the
+    # accumulated result is independent of how sparsely the caller samples GR.
+    full_coordinates, full_relative_velocity = _relative_events(
+        trajectory,
+        primary=primary,
+        body=body,
+        times=trajectory.times,
+    )
+    ft, fx, fy, fz = (full_coordinates[:, axis] for axis in range(4))
+    full_metric = np.moveaxis(
+        np.asarray(metric.evaluate((ft, fx, fy, fz)), dtype=np.float64),
+        -1,
+        0,
+    )
+    full_coordinate_velocity = np.column_stack(
+        (
+            np.full(len(full_coordinates), SPEED_OF_LIGHT, dtype=np.float64),
+            full_relative_velocity,
+        )
+    )
+    full_rate2 = -np.einsum(
+        "nij,ni,nj->n",
+        full_metric,
+        full_coordinate_velocity,
+        full_coordinate_velocity,
+    ) / SPEED_OF_LIGHT**2
+    if np.any(full_rate2 <= 0.0):
+        raise ValueError("trajectory becomes non-timelike in Schwarzschild spacetime")
+    full_rate = np.sqrt(full_rate2)
+    full_proper_time = np.zeros_like(trajectory.times)
+    if len(trajectory.times) > 1:
+        dt = np.diff(trajectory.times)
+        increments = 0.5 * (full_rate[:-1] + full_rate[1:]) * dt
+        full_proper_time[1:] = np.cumsum(increments)
+
     query_times = coordinates[:, 0] / SPEED_OF_LIGHT
-    proper_time = np.zeros_like(query_times)
-    if len(query_times) > 1:
-        dt = np.diff(query_times)
-        increments = 0.5 * (
-            proper_time_rate[:-1] + proper_time_rate[1:]
-        ) * dt
-        proper_time[1:] = np.cumsum(increments)
+    proper_time = np.interp(query_times, trajectory.times, full_proper_time)
 
     tensor_samples = None
     if tensor_outputs is not None:
