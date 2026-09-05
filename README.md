@@ -2,7 +2,7 @@
 
 Tensor Toolkit is an experimental scientific-computing package for classical and relativistic physics simulation. It combines Newtonian many-body trajectory integration with a validated general-relativity tensor pipeline, allowing moving bodies and test particles to be followed through classical simulations and sampled in spacetime metrics.
 
-The current development direction is a validated CPU reference pipeline, a Newtonian point-mass dynamics layer, and bridges between simulated trajectories and relativistic spacetime calculations. Legacy symbolic, plotting, and GPU-era code remains in the repository for migration/reference purposes, but it is not the authoritative execution path.
+The current development direction is a validated CPU reference pipeline, a generalized classical dynamics layer, shared worldlines, and a relativistic observer/propagation analysis layer. Legacy symbolic, plotting, and GPU-era code remains in the repository for migration/reference purposes, but it is not the authoritative execution path.
 <img width="1920" height="1017" alt="python_nt60fyL2VS" src="https://github.com/user-attachments/assets/02f5bb28-b256-4136-ae66-e6caa7cbcfdc" />
 
 ## Current GR pipeline
@@ -70,19 +70,19 @@ tensor-toolkit convergence alcubierre --points 5 7 9
 
 ## Newtonian mechanics and relativity bridge
 
-The Development branch now includes a classical point-mass simulation layer designed to provide physically meaningful trajectories for the relativistic engine.
+The Development branch includes a classical simulation layer designed to provide physically meaningful trajectories for the relativistic engine.
 
 Current capabilities include:
 
 - Newtonian N-body gravity with massive bodies and passive test particles,
+- pluggable dynamics models and composite external forces,
 - velocity-Verlet and RK4 trajectory integration,
+- finite body radii and event detection,
 - reusable orbital and flyby initial conditions,
 - energy, momentum, and angular-momentum diagnostics,
-- passive-probe specific energy and angular-momentum validation,
-- elliptic, parabolic, and hyperbolic orbit classification,
-- bound-orbit elements and analytic hyperbolic reference calculations,
+- passive-probe orbital validation,
 - pairwise closest-approach and encounter diagnostics,
-- arbitrary-time trajectory sampling, and
+- trajectory/worldline conversion, and
 - trajectory-to-metric and local tensor sampling.
 
 Run the built-in Jupiter/probe experiment with:
@@ -97,15 +97,38 @@ A Newtonian trajectory can also be sampled in a Schwarzschild spacetime without 
 tensor-toolkit simulate demo-flyby --schwarzschild jupiter probe --relativity-samples 5
 ```
 
-The bridge uses Schwarzschild isotropic Cartesian coordinates `(ct, x, y, z)`, allowing the Cartesian Newtonian trajectory to feed directly into metric evaluation. Proper time is integrated along the trajectory, and selected events such as closest approach can be passed through the existing GR finite-difference tensor pipeline:
+The bridge uses Schwarzschild isotropic Cartesian coordinates `(ct, x, y, z)`, allowing the Cartesian Newtonian trajectory to feed directly into metric evaluation. Proper time is integrated along the trajectory, selected events can be passed through the existing GR finite-difference tensor pipeline, and Schwarzschild samples now expose a shared `Worldline` with four-velocity.
 
 ```text
 tensor-toolkit simulate demo-flyby --schwarzschild jupiter probe --relativity-samples 5 --gr-fields metric christoffel ricci einstein --gr-spacing 1000000
 ```
 
-This is currently a one-way coupling: Newtonian dynamics generates the trajectory and GR evaluates the spacetime along it. Schwarzschild sampling treats one selected massive body as an isolated, non-rotating spherical source; the project does not yet solve a self-consistent many-body relativistic spacetime.
+This remains one-way coupling: classical dynamics generates the trajectory and GR evaluates the spacetime along it. Schwarzschild sampling treats one selected massive body as an isolated, non-rotating spherical source; the project does not yet solve a self-consistent many-body relativistic spacetime.
 
-See `docs/NEWTONIAN_MECHANICS.md` for the classical simulation and relativity-bridge details.
+See `docs/NEWTONIAN_MECHANICS.md` and `docs/SIMULATION_ARCHITECTURE.md`.
+
+## Phase 4 relativistic observation and propagation
+
+The Development branch now includes a dedicated `tensor_toolkit.relativity` analysis package built downstream of the validated reference geometry pipeline.
+
+Current Phase 4 infrastructure includes:
+
+- `SpacetimeSampler` for arbitrary-event metric, connection, curvature, and worldline field sampling,
+- orthonormal observer tetrads and static/comoving observer frames,
+- observer-local vector, tensor, and stress-energy measurements,
+- Ricci-square and Kretschmann curvature invariants,
+- Weyl and observer-frame electric Weyl curvature,
+- tidal tensors, principal tidal directions, and geodesic-deviation acceleration,
+- timelike and null geodesic integration with normalization-drift diagnostics,
+- parallel and Fermi-Walker vector transport,
+- invariant photon frequency/redshift measurements,
+- coordinate light-travel-time and radar-distance observables,
+- null-ray construction from local observer directions, and
+- scientific ray-bundle integration.
+
+Phase 4 intentionally analyzes prescribed geometry rather than evolving it. The geodesic solver is currently a transparent fixed-step RK4 reference path whose connection evaluations use local finite-difference stencils; cached/interpolated fields should be introduced before large ray-tracing workloads.
+
+See `docs/PHASE4_RELATIVITY.md`.
 
 ## Metric Tensor Simulator
 
@@ -121,20 +144,22 @@ or, from a repository checkout:
 python visualizer.py
 ```
 
-The visualizer is now a front end to the same `run_experiment()` pipeline used by the CLI. It no longer constructs a separate symbolic metric or calls the legacy `analyticalEnergyTensor.py` implementation.
+The visualizer is a front end to the same `run_experiment()` pipeline used by the CLI. It no longer constructs a separate symbolic metric or calls the legacy `analyticalEnergyTensor.py` implementation.
 
 The current viewer supports:
 
-- selecting a registered metric (Minkowski is the default baseline),
+- selecting a registered metric,
 - editing metric parameters,
-- setting grid resolution and uniform coordinate extent,
-- viewing `metric`, `inverse_metric`, `ricci`, `einstein`, and `stress_energy` rank-2 fields,
+- setting grid resolution and coordinate extent,
+- viewing rank-2 metric/curvature/stress-energy fields,
 - selecting tensor components and two-dimensional coordinate slices,
-- inspecting the complete 4x4 tensor at the grid center,
-- seeing stored numerical validation results,
+- inspecting complete tensors at the grid center,
+- seeing stored numerical validation results, and
 - saving and reopening the same NPZ/JSON result format used by the CLI.
 
-See `docs/VISUALIZER.md` for details.
+A later visualization milestone will move the 3-D field, worldline, tidal-glyph, and ray-bundle views to VTK/PyVista while keeping the renderer downstream of the solver.
+
+See `docs/VISUALIZER.md`.
 
 ## Numerical status
 
@@ -142,7 +167,9 @@ Tensor Toolkit is still research/development software. A successful run is not t
 
 Minkowski vacuum is the basic exact sanity check. Curved metrics are being used for analytic and convergence validation. The CLI and GUI surface numerical symmetry warnings rather than hiding them.
 
-The GR grid simulator samples metric fields over `(t, x, y, z)`, while the classical layer evolves moving bodies over time and can feed selected trajectory events into metric/tensor evaluation. Tensor Toolkit is not yet a full numerical-relativity evolution code: it does not evolve ADM/BSSN initial data or self-consistently couple moving matter back into spacetime.
+The GR grid simulator samples prescribed metric fields over `(t, x, y, z)`. The classical and Phase 4 layers can generate and analyze worldlines, observer measurements, geodesics, and light propagation in those prescribed spacetimes.
+
+Tensor Toolkit is not yet a full numerical-relativity evolution code: it does not evolve ADM/BSSN initial data, solve Einstein's equations as an initial-value PDE system, or self-consistently couple moving matter back into spacetime. Those remain Phase 5 work after the earlier machinery passes stronger Schwarzschild and propagation validation.
 
 ## Tests
 
