@@ -49,6 +49,32 @@ def kretschmann_scalar(metric: np.ndarray, riemann_mixed: np.ndarray) -> float:
     return float(np.einsum("abcd,abcd->", lower, raised))
 
 
+def weyl_tensor(metric: np.ndarray, riemann_mixed: np.ndarray) -> np.ndarray:
+    """Return fully covariant Weyl tensor C_abcd in four dimensions."""
+
+    metric = np.asarray(metric, dtype=np.float64)
+    lower = lower_riemann(metric, riemann_mixed)
+    ricci = ricci_from_point_riemann(riemann_mixed)
+    scalar = ricci_scalar_point(metric, ricci)
+    out = np.empty_like(lower)
+    for a in range(4):
+        for b in range(4):
+            for c in range(4):
+                for d in range(4):
+                    trace = 0.5 * (
+                        metric[a, c] * ricci[b, d]
+                        - metric[a, d] * ricci[b, c]
+                        - metric[b, c] * ricci[a, d]
+                        + metric[b, d] * ricci[a, c]
+                    )
+                    scalar_term = (scalar / 6.0) * (
+                        metric[a, c] * metric[b, d]
+                        - metric[a, d] * metric[b, c]
+                    )
+                    out[a, b, c, d] = lower[a, b, c, d] - trace + scalar_term
+    return out
+
+
 @dataclass(frozen=True)
 class CurvatureDiagnostics:
     ricci_scalar: float
@@ -83,6 +109,28 @@ def tidal_tensor(
         spatial,
         u,
         lower,
+        optimize=True,
+    )
+
+
+def electric_weyl_tensor(
+    metric: np.ndarray,
+    riemann_mixed: np.ndarray,
+    frame: ObserverFrame,
+) -> np.ndarray:
+    """Return observer-frame electric Weyl curvature."""
+
+    metric = np.asarray(metric, dtype=np.float64)
+    weyl = weyl_tensor(metric, riemann_mixed)
+    u = normalize_timelike(metric, frame.four_velocity)
+    spatial = frame.spatial_basis
+    return np.einsum(
+        "im,a,jn,b,manb->ij",
+        spatial,
+        u,
+        spatial,
+        u,
+        weyl,
         optimize=True,
     )
 
