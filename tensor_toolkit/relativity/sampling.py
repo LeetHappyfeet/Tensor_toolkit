@@ -7,6 +7,7 @@ import numpy as np
 
 from tensor_toolkit.experiment import compute_tensor_fields
 from tensor_toolkit.metrics import Metric
+from tensor_toolkit.physics.worldline import Worldline
 
 
 @dataclass(frozen=True)
@@ -22,6 +23,13 @@ class EventGeometry:
     ricci_scalar: float | None = None
     einstein: np.ndarray | None = None
     stress_energy: np.ndarray | None = None
+
+
+@dataclass(frozen=True)
+class WorldlineFieldSamples:
+    coordinates: np.ndarray
+    fields: dict[str, np.ndarray]
+    body_name: str
 
 
 @dataclass(frozen=True)
@@ -75,6 +83,19 @@ class SpacetimeSampler:
             value = np.asarray(field[(slice(None),) * prefix + center]).copy()
             out[name] = float(value) if value.ndim == 0 else value
         return out
+
+    def fields_along_worldline(self, worldline: Worldline, outputs) -> WorldlineFieldSamples:
+        outputs = frozenset(outputs)
+        accumulated: dict[str, list[np.ndarray]] = {name: [] for name in outputs}
+        for event in worldline.coordinates:
+            fields = self.fields_at(event, outputs)
+            for name in outputs:
+                accumulated[name].append(np.asarray(fields[name]))
+        return WorldlineFieldSamples(
+            coordinates=worldline.coordinates.copy(),
+            fields={name: np.stack(values, axis=0) for name, values in accumulated.items()},
+            body_name=worldline.body_name,
+        )
 
     def connection_at(self, event) -> np.ndarray:
         return np.asarray(self.fields_at(event, {"christoffel"})["christoffel"])
