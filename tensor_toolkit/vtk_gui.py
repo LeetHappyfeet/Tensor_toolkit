@@ -12,7 +12,7 @@ import threading
 
 import numpy as np
 
-from tensor_toolkit.experiment import run_experiment
+from tensor_toolkit.experiment import ExperimentResult, run_experiment
 from tensor_toolkit.io import load_result, save_result
 from tensor_toolkit.registry import builtins, configure_grid, get_experiment
 from tensor_toolkit.visualization import editable_metric_parameters, replace_metric_parameters
@@ -44,7 +44,7 @@ def _dependencies():
         from vtkmodules.vtkRenderingVolumeOpenGL2 import vtkSmartVolumeMapper
         from vtkmodules.vtkFiltersCore import vtkContourFilter
         from vtkmodules.vtkRenderingCore import vtkDataSetMapper
-        from vtk.util.numpy_support import numpy_to_vtk
+        from vtkmodules.util.numpy_support import numpy_to_vtk
         import vtkmodules.vtkInteractionStyle  # noqa: F401
         import vtkmodules.vtkRenderingOpenGL2  # noqa: F401
     except ImportError as exc:
@@ -244,7 +244,15 @@ class TensorToolkitVTKGUI:
         if not path:
             return
         try:
-            self._accept_result(load_result(path))
+            metadata, fields, axes = load_result(path)
+            result = ExperimentResult(
+                metric_name=str(metadata.get("metric_name", "unknown")),
+                coordinates=tuple(metadata.get("coordinates", ("t", "x", "y", "z"))),
+                axis_values=tuple(axes),
+                fields=fields,
+                metadata={key: value for key, value in metadata.items() if key not in {"metric_name", "coordinates", "fields"}},
+            )
+            self._accept_result(result)
         except Exception as exc:
             self.d["messagebox"].showerror("Open result", str(exc))
 
