@@ -29,6 +29,14 @@ def _orthogonalize(metric: np.ndarray, candidate: np.ndarray, basis: list[np.nda
 
 
 @dataclass(frozen=True)
+class LocalStressEnergy:
+    energy_density: float
+    momentum_density: np.ndarray
+    spatial_stress: np.ndarray
+    local_tensor: np.ndarray
+
+
+@dataclass(frozen=True)
 class ObserverFrame:
     """Orthonormal tetrad at one spacetime event.
 
@@ -90,6 +98,15 @@ class ObserverFrame:
     def spatial_projection(self, tensor) -> np.ndarray:
         return self.measure_covariant_rank2(tensor)[1:, 1:]
 
+    def measure_stress_energy(self, stress_energy) -> LocalStressEnergy:
+        local = self.measure_covariant_rank2(stress_energy)
+        return LocalStressEnergy(
+            energy_density=float(local[0, 0]),
+            momentum_density=-local[0, 1:].copy(),
+            spatial_stress=local[1:, 1:].copy(),
+            local_tensor=local,
+        )
+
 
 def comoving_frame(metric: np.ndarray, coordinates, four_velocity, *, name="observer") -> ObserverFrame:
     """Construct an orthonormal tetrad using metric Gram-Schmidt."""
@@ -113,5 +130,16 @@ def comoving_frame(metric: np.ndarray, coordinates, four_velocity, *, name="obse
         four_velocity=np.asarray(four_velocity, dtype=np.float64),
         tetrad=np.stack(basis),
         metric=metric,
+        name=name,
+    )
+
+
+def static_frame(metric: np.ndarray, coordinates, *, name="static-observer") -> ObserverFrame:
+    """Construct an observer aligned with the coordinate-time direction."""
+
+    return comoving_frame(
+        metric,
+        coordinates,
+        np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float64),
         name=name,
     )
