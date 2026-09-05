@@ -16,7 +16,7 @@ from tensor_toolkit.experiment import ExperimentResult, run_experiment
 from tensor_toolkit.io import load_result, save_result
 from tensor_toolkit.registry import builtins, configure_grid, get_experiment
 from tensor_toolkit.visualization import editable_metric_parameters, replace_metric_parameters
-from tensor_toolkit.visualization_data import experiment_volume
+from tensor_toolkit.visualization_data import experiment_volume, trajectory_event_points
 from tensor_toolkit.visualization_io import load_saved_trajectory
 from tensor_toolkit.visualization_timeline import (
     FrameCache,
@@ -490,7 +490,8 @@ class TensorToolkitVTKGUI:
         return actor, data
 
     def _build_trajectory_scene(self):
-        for actor in list(self._body_actors.values()) + list(self._trail_actors.values()) + self._event_actors:
+        trail_actors = [value[0] for value in self._trail_actors.values()]
+        for actor in list(self._body_actors.values()) + trail_actors + self._event_actors:
             self.renderer.RemoveActor(actor)
         self._body_actors.clear()
         self._trail_actors.clear()
@@ -518,8 +519,22 @@ class TensorToolkitVTKGUI:
             self._trail_actors[name] = (trail_actor, trail_data)
 
         event_labels = []
+        event_points = trajectory_event_points(self.trajectory)
+        event_radius = radius * 0.65
         for i, event in enumerate(self.trajectory.events):
             event_labels.append(f"{i}: {event.kind} @ {event.time:.6g}")
+            sphere = self.d["vtkSphereSource"]()
+            sphere.SetRadius(event_radius)
+            sphere.SetThetaResolution(12)
+            sphere.SetPhiResolution(12)
+            mapper = self.d["vtkPolyDataMapper"]()
+            mapper.SetInputConnection(sphere.GetOutputPort())
+            actor = self.d["vtkActor"]()
+            actor.SetMapper(mapper)
+            if i < len(event_points.points):
+                actor.SetPosition(*map(float, event_points.points[i]))
+            self.renderer.AddActor(actor)
+            self._event_actors.append(actor)
         self.event_box.configure(values=event_labels)
         if event_labels:
             self.event_var.set(event_labels[0])
