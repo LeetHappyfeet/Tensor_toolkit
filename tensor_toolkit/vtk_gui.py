@@ -257,10 +257,16 @@ class TensorToolkitVTKGUI:
         self.status_var.set("Calculation failed")
         self.d["messagebox"].showerror("Tensor Toolkit", str(exc))
 
+    def _clear_field_actor(self):
+        if self._volume_state is not None:
+            self.renderer.RemoveViewProp(self._volume_state["actor"])
+        self._volume_state = None
+
     def _accept_result(self, result):
         self.result = result
         self.frame_cache.clear()
-        self._volume_state = None
+        self._clear_field_actor()
+        self._camera_initialized = False
         self._update_field_choices()
         diagnostics = result.metadata.get("diagnostics", {})
         self.validation_var.set(f"Pipeline validation status: {diagnostics.get('status', 'unknown')}")
@@ -302,6 +308,7 @@ class TensorToolkitVTKGUI:
             self.d["messagebox"].showerror("Open trajectory", str(exc))
             return
         self._build_trajectory_scene()
+        self._camera_initialized = False
         self._sync_timeline_range()
         self.status_var.set(
             f"Loaded trajectory with {len(self.trajectory.body_names)} bodies and "
@@ -373,7 +380,7 @@ class TensorToolkitVTKGUI:
 
     def _field_changed(self):
         self.frame_cache.clear()
-        self._volume_state = None
+        self._clear_field_actor()
         self._render_time_state(force_field_rebuild=True)
 
     def _tensor_frame_index(self):
@@ -599,7 +606,10 @@ class TensorToolkitVTKGUI:
             return
         t = float(np.clip(self.timeline.current, self.trajectory.times[0], self.trajectory.times[-1]))
         positions = sample_trajectory_positions(self.trajectory, t)
-        duration = float(self.trail_var.get())
+        try:
+            duration = float(self.trail_var.get())
+        except (TypeError, ValueError, self.tk.TclError):
+            duration = 0.0
         for i, name in enumerate(self.trajectory.body_names):
             self._body_actors[name].SetPosition(*map(float, positions[i]))
             trail = trajectory_trail(self.trajectory, name, t, duration=duration)
