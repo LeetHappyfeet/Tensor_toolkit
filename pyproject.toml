@@ -5,12 +5,13 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "tensor-toolkit"
 version = "0.2.0"
-description = "CPU reference general-relativity tensor calculations with a metric tensor simulator"
+description = "CPU reference general-relativity tensor calculations with classical dynamics and VTK visualization"
 requires-python = ">=3.10"
 dependencies = ["numpy>=1.24", "matplotlib>=3.7"]
 
 [project.optional-dependencies]
 test = ["pytest>=7.4"]
+visualization = ["vtk>=9.3"]
 
 [project.scripts]
 tensor-toolkit = "tensor_toolkit.cli:main"
