@@ -4,6 +4,28 @@ Tensor Toolkit is an experimental scientific-computing package for classical and
 
 The current development direction is a validated CPU reference pipeline, a generalized classical dynamics layer, shared worldlines, and a relativistic observer/propagation analysis layer. Legacy symbolic, plotting, and GPU-era code remains in the repository for migration/reference purposes, but it is not the authoritative execution path.
 <img width="1920" height="1017" alt="python_nt60fyL2VS" src="https://github.com/user-attachments/assets/02f5bb28-b256-4136-ae66-e6caa7cbcfdc" />
+The current development direction is a validated CPU reference pipeline, a Newtonian point-mass dynamics layer, and bridges between simulated trajectories and relativistic spacetime calculations. Legacy symbolic, plotting, and GPU-era code remains in the repository for migration/reference purposes, but it is not the authoritative execution path.
+
+
+# Tensor Toolkit
+What's new?
+Added new memory handling to prevent memory overflows. This can be changed in either the UI or terminal window. For example:
+```
+tensor-toolkit run alcubierre --points 31 --fields einstein stress_energy --memory-mode auto
+```
+or
+```
+tensor-toolkit run alcubierre \
+    --points 31 \
+    --fields einstein stress_energy \
+    --memory-mode auto
+```
+Added more changes to the GUI.
+
+<img width="1920" height="1017" alt="python_nt60fyL2VS" src="https://github.com/user-attachments/assets/f8308a17-6831-4e61-b80c-06263dde65d4" />
+
+
+
 
 ## Current GR pipeline
 
