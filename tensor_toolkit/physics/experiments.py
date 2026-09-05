@@ -1,4 +1,4 @@
-"""Classical simulation experiments built on the Newtonian physics layer."""
+"""Classical simulation experiments built on the physics layer."""
 
 from __future__ import annotations
 
@@ -18,13 +18,17 @@ from .diagnostics import (
     hyperbolic_reference,
     test_particle_diagnostics,
 )
+from .dynamics import DynamicsModel
+from .events import EventDetector
 from .integrators import simulate
 from .state import System
 from .trajectory import Trajectory
 
+
 @dataclass(frozen=True)
 class SimulationExperiment:
     """Definition for a classical many-body simulation experiment."""
+
     name: str
     system: System
     duration: float
@@ -32,6 +36,8 @@ class SimulationExperiment:
     method: str = "verlet"
     sample_every: int = 1
     encounters: tuple[tuple[str, str], ...] = field(default_factory=tuple)
+    dynamics: DynamicsModel | None = None
+    event_detectors: tuple[EventDetector, ...] = field(default_factory=tuple)
 
     def __post_init__(self) -> None:
         if not self.name:
@@ -72,6 +78,8 @@ def run_simulation_experiment(
         method=experiment.method,
         gravitational_constant=gravitational_constant,
         softening=softening,
+        dynamics=experiment.dynamics,
+        event_detectors=experiment.event_detectors,
     )
     G = gravitational_constant
     conservation = conservation_diagnostics(
@@ -125,6 +133,12 @@ def run_simulation_experiment(
             "body_names": experiment.system.names,
             "body_count": len(experiment.system.bodies),
             "sample_every": int(experiment.sample_every),
+            "dynamics": (
+                type(experiment.dynamics).__name__
+                if experiment.dynamics is not None
+                else "NewtonianGravity"
+            ),
+            "event_count": len(trajectory.events),
         },
     )
 
@@ -155,6 +169,15 @@ def save_simulation_experiment_result(
         "momentum_absolute_drift": result.conservation.momentum_absolute_drift,
         "angular_momentum_relative_drift": result.conservation.angular_momentum_relative_drift,
     }
+    metadata["events"] = [
+        {
+            "time": event.time,
+            "kind": event.kind,
+            "bodies": list(event.bodies),
+            "details": event.details,
+        }
+        for event in trajectory.events
+    ]
     metadata["test_particles"] = {
         key: {
             "primary_name": value.primary_name,
