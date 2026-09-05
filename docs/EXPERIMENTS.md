@@ -1,27 +1,72 @@
 # Headless experiments
 
-Tensor Toolkit now separates metric construction, tensor calculation, experiment configuration, and visualization.
+Tensor Toolkit separates metric construction, tensor calculation, experiment configuration, storage, simulation, and visualization.
 
-The supported flow is:
+There are now two complementary experiment paths:
 
-`Metric -> Experiment -> reference geometry engine -> ExperimentResult -> visualization/storage`
+```text
+Metric -> grid Experiment -> reference geometry engine -> ExperimentResult
+```
 
-The numerical engine has no UI dependency.
+and
 
-## Metric contract
+```text
+System + DynamicsModel -> simulation -> Trajectory -> Worldline
+                                      -> relativistic sampling/analysis
+```
 
-A supported metric exposes a name, coordinate ordering, and an `evaluate()` method returning a NumPy float64 covariant metric with layout `(4, 4, Nt, Nx, Ny, Nz)`.
+Neither numerical engine depends on the desktop UI.
 
-Initial models are Minkowski, flat-slicing de Sitter, and Alcubierre. The Alcubierre model uses geometrized units and a moving center `x_s(t) = x0 + v t`, so it supports genuine multi-time-slice evaluation instead of the legacy constructor's single-time-slice restriction.
+## Metric-grid experiment contract
 
-## Experiment contract
+A supported metric exposes a name, coordinate ordering, and an `evaluate()` method returning a NumPy `float64` covariant metric with shape
 
-An `Experiment` owns four coordinate axes, a metric model, requested outputs, and the stress-energy unit convention. `run_experiment()` evaluates only requested retained outputs. This is the first step toward an explicit retention policy: expensive intermediates such as the full Riemann tensor need not be kept when the user only wants Einstein or stress-energy fields.
+`(4, 4, N0, N1, N2, N3)`.
 
-The current implementation is intentionally simple and may recompute intermediates when several downstream outputs are requested. A later calculation-plan/cache layer should remove that duplication before large production runs.
+Current metric classes include Minkowski, flat-slicing de Sitter, Alcubierre, and Schwarzschild isotropic Cartesian.
+
+The built-in `tensor-toolkit run` registry currently exposes:
+
+- `minkowski`
+- `de-sitter`
+- `alcubierre`
+
+Schwarzschild is currently used programmatically, by validation, and by the classical-trajectory bridge rather than as a general registered grid experiment.
+
+An `Experiment` owns four coordinate axes, a metric model, requested outputs, stress-energy units, backend choice, and memory policy.
+
+Requested retained outputs are selected from the supported tensor fields. Internal intermediates are discarded unless required or explicitly requested.
+
+## Storage and memory
+
+`run_experiment()` supports in-memory and multidimensional tiled execution. Persistent results can remain in memory/NPZ form or be written incrementally as disk-backed NumPy memmaps.
+
+See [MEMORY_AND_STORAGE.md](MEMORY_AND_STORAGE.md).
+
+## Classical simulation experiments
+
+`tensor_toolkit.physics` provides a separate experiment layer for classical trajectories. A `SimulationExperiment` combines a system, duration, timestep, integrator, dynamics model, events, and metadata.
+
+The built-in `demo-flyby` experiment provides a reproducible Jupiter/probe encounter:
+
+```bash
+tensor-toolkit simulate demo-flyby
+```
+
+Simulation results can be saved and reused for encounter diagnostics, worldline conversion, Schwarzschild sampling, and local GR tensor evaluation.
+
+## Worldlines
+
+`Worldline` is the shared spacetime-history representation between classical and relativistic layers. A worldline can originate from a Newtonian trajectory, a Schwarzschild bridge, a geodesic solver, or future dynamics implementations.
+
+This is the preferred boundary for downstream relativistic observation, propagation, and visualization.
 
 ## Alcubierre research direction
 
-The current Alcubierre metric is a prescribed geometry, not a numerical evolution of Einstein's equations. Tensor Toolkit evaluates the geometry over `(t,x,y,z)` and infers the corresponding Einstein/stress-energy tensors. This supports parameter scans over velocity, radius, wall thickness, and trajectory while the evolution-code problem remains a separate future milestone.
+The current Alcubierre metric remains a prescribed geometry, not a numerical evolution of Einstein's equations. Tensor Toolkit samples it over spacetime and infers the corresponding curvature and stress-energy fields.
 
-The next analysis layer should derive observer-dependent quantities from `T_mu_nu`, including Eulerian energy density, momentum density, spatial stress, and energy-condition diagnostics. Those quantities should become the primary UI visualization targets rather than raw tensor components alone.
+That supports parameter studies while keeping numerical-relativity evolution as a separate future milestone.
+
+## Phase boundary
+
+The experiment system does not yet self-consistently evolve spacetime and matter together. ADM/BSSN-type initial data, constraint evolution, gauge evolution, and PDE integration remain Phase 5 work.
