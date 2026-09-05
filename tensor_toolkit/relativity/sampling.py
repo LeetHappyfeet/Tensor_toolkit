@@ -8,6 +8,7 @@ import numpy as np
 from tensor_toolkit.experiment import compute_tensor_fields
 from tensor_toolkit.metrics import Metric
 from tensor_toolkit.physics.worldline import Worldline
+from .debug import debug_log
 
 
 @dataclass(frozen=True)
@@ -39,12 +40,21 @@ class SpacetimeSampler:
     metric: Metric
     spacings: tuple[float, float, float, float]
     units: str = "geometrized"
+    debug: bool = False
 
     def __post_init__(self) -> None:
         spacings = tuple(float(value) for value in self.spacings)
         if len(spacings) != 4 or any(value <= 0.0 for value in spacings):
             raise ValueError("spacings must contain four positive values")
         object.__setattr__(self, "spacings", spacings)
+        debug_log(
+            self.debug,
+            "sampler",
+            "initialized",
+            metric=getattr(self.metric, "name", type(self.metric).__name__),
+            spacings=self.spacings,
+            units=self.units,
+        )
 
     @staticmethod
     def _event(event) -> np.ndarray:
@@ -59,16 +69,38 @@ class SpacetimeSampler:
         value = np.asarray(self.metric.evaluate(coordinates), dtype=np.float64)
         if value.shape != (4, 4, 1):
             raise ValueError(f"metric evaluator returned unexpected point shape {value.shape}")
-        return value[..., 0]
+        result = value[..., 0]
+        debug_log(
+            self.debug,
+            "sampler",
+            "metric_at",
+            event=np.array2string(event, precision=6),
+            max_abs=float(np.max(np.abs(result))),
+        )
+        return result
 
     def inverse_metric_at(self, event) -> np.ndarray:
-        return np.linalg.inv(self.metric_at(event))
+        result = np.linalg.inv(self.metric_at(event))
+        debug_log(
+            self.debug,
+            "sampler",
+            "inverse_metric_at",
+            max_abs=float(np.max(np.abs(result))),
+        )
+        return result
 
     def fields_at(self, event, outputs) -> dict[str, np.ndarray | float]:
         event = self._event(event)
         outputs = frozenset(outputs)
         if not outputs:
             raise ValueError("at least one field must be requested")
+        debug_log(
+            self.debug,
+            "sampler",
+            "fields_at:start",
+            event=np.array2string(event, precision=6),
+            outputs=",".join(sorted(outputs)),
+        )
         axes = tuple(
             event[i] + self.spacings[i] * np.array([-1.0, 0.0, 1.0], dtype=np.float64)
             for i in range(4)
@@ -82,12 +114,25 @@ class SpacetimeSampler:
             prefix = field.ndim - 4
             value = np.asarray(field[(slice(None),) * prefix + center]).copy()
             out[name] = float(value) if value.ndim == 0 else value
+        debug_log(
+            self.debug,
+            "sampler",
+            "fields_at:done",
+            outputs=",".join(sorted(out)),
+        )
         return out
 
     def fields_along_worldline(self, worldline: Worldline, outputs) -> WorldlineFieldSamples:
         outputs = frozenset(outputs)
         accumulated: dict[str, list[np.ndarray]] = {name: [] for name in outputs}
-        for event in worldline.coordinates:
+        for index, event in enumerate(worldline.coordinates):
+            debug_log(
+                self.debug,
+                "sampler",
+                "worldline_sample",
+                index=index,
+                body=worldline.body_name,
+            )
             fields = self.fields_at(event, outputs)
             for name in outputs:
                 accumulated[name].append(np.asarray(fields[name]))
