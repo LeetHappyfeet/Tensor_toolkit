@@ -5,6 +5,7 @@ from __future__ import annotations
 import numpy as np
 
 from tensor_toolkit.physics.worldline import Worldline
+from .debug import debug_log
 from .sampling import SpacetimeSampler
 
 
@@ -22,17 +23,28 @@ def parallel_transport(
     sampler: SpacetimeSampler,
     worldline: Worldline,
     initial_vector,
+    *,
+    debug: bool = False,
+    debug_every: int = 1,
 ) -> np.ndarray:
-    """Transport a vector along an already sampled worldline.
-
-    A midpoint predictor-corrector step is used between worldline samples.
-    """
+    """Transport a vector along an already sampled worldline."""
 
     vector = np.asarray(initial_vector, dtype=np.float64)
+    debug_every = int(debug_every)
     if vector.shape != (4,):
         raise ValueError("initial_vector must have shape (4,)")
+    if debug_every < 1:
+        raise ValueError("debug_every must be at least 1")
+    debug_enabled = bool(debug or sampler.debug)
     output = np.empty((len(worldline.parameter), 4), dtype=np.float64)
     output[0] = vector
+    debug_log(
+        debug_enabled,
+        "transport",
+        "parallel:start",
+        samples=len(worldline.parameter),
+        vector=np.array2string(vector, precision=6),
+    )
 
     for i in range(len(worldline.parameter) - 1):
         h = float(worldline.parameter[i + 1] - worldline.parameter[i])
@@ -47,6 +59,14 @@ def parallel_transport(
         k2 = _parallel_rhs(sampler, midpoint_x, midpoint_u, midpoint_vector)
         vector = vector + h * k2
         output[i + 1] = vector
+        if debug_enabled and ((i + 1) % debug_every == 0 or i == len(worldline.parameter) - 2):
+            debug_log(
+                True,
+                "transport",
+                "parallel:step",
+                index=i + 1,
+                vector=np.array2string(vector, precision=6),
+            )
     return output
 
 
@@ -55,20 +75,25 @@ def fermi_walker_transport(
     worldline: Worldline,
     four_acceleration,
     initial_vector,
+    *,
+    debug: bool = False,
+    debug_every: int = 1,
 ) -> np.ndarray:
-    """Fermi-Walker transport using a unit-timelike tangent and supplied 4-acceleration.
-
-    The caller is responsible for using a proper-time-parameterized worldline.
-    """
+    """Fermi-Walker transport using a unit-timelike tangent and supplied 4-acceleration."""
 
     acceleration = np.asarray(four_acceleration, dtype=np.float64)
+    debug_every = int(debug_every)
     if acceleration.shape != worldline.coordinates.shape:
         raise ValueError("four_acceleration must match worldline coordinate shape")
     vector = np.asarray(initial_vector, dtype=np.float64)
     if vector.shape != (4,):
         raise ValueError("initial_vector must have shape (4,)")
+    if debug_every < 1:
+        raise ValueError("debug_every must be at least 1")
+    debug_enabled = bool(debug or sampler.debug)
     output = np.empty_like(acceleration)
     output[0] = vector
+    debug_log(debug_enabled, "transport", "fermi_walker:start", samples=len(worldline.parameter))
 
     for i in range(len(worldline.parameter) - 1):
         h = float(worldline.parameter[i + 1] - worldline.parameter[i])
@@ -82,4 +107,12 @@ def fermi_walker_transport(
         fw = (np.outer(u, a_cov) - np.outer(a, u_cov)) @ vector
         vector = vector + h * (connection_term + fw)
         output[i + 1] = vector
+        if debug_enabled and ((i + 1) % debug_every == 0 or i == len(worldline.parameter) - 2):
+            debug_log(
+                True,
+                "transport",
+                "fermi_walker:step",
+                index=i + 1,
+                vector=np.array2string(vector, precision=6),
+            )
     return output
