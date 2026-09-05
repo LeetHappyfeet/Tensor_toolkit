@@ -33,6 +33,14 @@ def schwarzschild_lapse(metric: SchwarzschildIsotropicMetric, rho) -> np.ndarray
     return (1.0 - u) / (1.0 + u)
 
 
+def isotropic_spatial_scale(metric: SchwarzschildIsotropicMetric, rho) -> np.ndarray:
+    """Return psi^2 where g_ij = psi^4 delta_ij."""
+
+    rho = np.asarray(rho, dtype=np.float64)
+    m = metric.geometric_mass
+    return (1.0 + m / (2.0 * rho)) ** 2
+
+
 def analytic_kretschmann(metric: SchwarzschildIsotropicMetric, rho) -> np.ndarray:
     """K = 48 m^2 / R^6 using areal radius R."""
 
@@ -60,6 +68,41 @@ def static_redshift(
 ) -> float:
     ratio = static_frequency_ratio(metric, emitter_rho, receiver_rho)
     return 1.0 / ratio - 1.0
+
+
+def static_radial_null_tangent(
+    metric: SchwarzschildIsotropicMetric,
+    rho: float,
+    *,
+    outward: bool = True,
+    energy: float = 1.0,
+) -> np.ndarray:
+    """Return a radial null tangent with conserved Killing energy E.
+
+    The event is assumed to lie on the +x axis in isotropic Cartesian
+    coordinates. With x^0=ct and E=-k_0, k^0=E/alpha^2.
+    """
+
+    E = float(energy)
+    if E <= 0.0:
+        raise ValueError("energy must be positive")
+    alpha = float(schwarzschild_lapse(metric, rho))
+    psi2 = float(isotropic_spatial_scale(metric, rho))
+    sign = 1.0 if outward else -1.0
+    return np.array(
+        [E / alpha**2, sign * E / (alpha * psi2), 0.0, 0.0],
+        dtype=np.float64,
+    )
+
+
+def static_timelike_tangent(
+    metric: SchwarzschildIsotropicMetric,
+    rho: float,
+) -> np.ndarray:
+    """Four-velocity of a static observer at isotropic radius rho."""
+
+    alpha = float(schwarzschild_lapse(metric, rho))
+    return np.array([1.0 / alpha, 0.0, 0.0, 0.0], dtype=np.float64)
 
 
 def weak_field_light_deflection(metric: SchwarzschildIsotropicMetric, impact_parameter: float) -> float:
