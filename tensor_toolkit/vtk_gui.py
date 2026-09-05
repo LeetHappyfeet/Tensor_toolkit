@@ -417,22 +417,47 @@ class TensorToolkitVTKGUI:
         image.GetPointData().Modified()
         image.Modified()
 
-    def _ensure_field_actor(self, volume, force=False):
-        spec = (self.field_var.get(), int(self.mu_var.get()), int(self.nu_var.get()), self.mode_var.get())
-        if not force and self._volume_state is not None and self._volume_state["spec"] == spec:
-            self._set_image_scalars(self._volume_state["image"], volume)
-            return
-
-        if self._volume_state is not None:
-            self.renderer.RemoveViewProp(self._volume_state["actor"])
-
-        image = self._vtk_image(volume)
+    def _volume_range(self, volume):
         finite = volume.values[np.isfinite(volume.values)]
         if finite.size == 0:
             raise ValueError("selected volume contains no finite values")
         vmin, vmax = float(np.min(finite)), float(np.max(finite))
         if np.isclose(vmin, vmax):
             vmax = vmin + max(1.0, abs(vmin)) * 1e-12
+        return vmin, vmax
+
+    def _update_field_transfer(self, state, vmin, vmax):
+        middle = 0.5 * (vmin + vmax)
+        if state.get("contour") is not None:
+            state["contour"].SetValue(0, middle)
+            state["contour"].Modified()
+        color = state.get("color")
+        opacity = state.get("opacity")
+        if color is not None and opacity is not None:
+            color.RemoveAllPoints()
+            color.AddRGBPoint(vmin, 0.1, 0.2, 0.8)
+            color.AddRGBPoint(middle, 0.9, 0.9, 0.9)
+            color.AddRGBPoint(vmax, 0.8, 0.2, 0.1)
+            opacity.RemoveAllPoints()
+            opacity.AddPoint(vmin, 0.0)
+            opacity.AddPoint(middle, 0.08)
+            opacity.AddPoint(vmax, 0.65)
+            color.Modified()
+            opacity.Modified()
+        state["range"] = (vmin, vmax)
+
+    def _ensure_field_actor(self, volume, force=False):
+        spec = (self.field_var.get(), int(self.mu_var.get()), int(self.nu_var.get()), self.mode_var.get())
+        vmin, vmax = self._volume_range(volume)
+        if not force and self._volume_state is not None and self._volume_state["spec"] == spec:
+            self._set_image_scalars(self._volume_state["image"], volume)
+            self._update_field_transfer(self._volume_state, vmin, vmax)
+            return
+
+        if self._volume_state is not None:
+            self.renderer.RemoveViewProp(self._volume_state["actor"])
+
+        image = self._vtk_image(volume)
 
         if self.mode_var.get() == "isosurface":
             contour = self.d["vtkContourFilter"]()
@@ -444,6 +469,9 @@ class TensorToolkitVTKGUI:
             actor.SetMapper(mapper)
             self.renderer.AddActor(actor)
             pipeline = contour
+            contour_state = contour
+            color_state = None
+            opacity_state = None
         else:
             mapper = self.d["vtkSmartVolumeMapper"]()
             mapper.SetInputData(image)
@@ -465,8 +493,15 @@ class TensorToolkitVTKGUI:
             actor.SetProperty(prop)
             self.renderer.AddVolume(actor)
             pipeline = mapper
+            contour_state = None
+            color_state = color
+            opacity_state = opacity
 
-        self._volume_state = {"spec": spec, "image": image, "actor": actor, "pipeline": pipeline, "range": (vmin, vmax)}
+        self._volume_state = {
+            "spec": spec, "image": image, "actor": actor, "pipeline": pipeline,
+            "contour": contour_state, "color": color_state, "opacity": opacity_state,
+            "range": (vmin, vmax),
+        }
 
     def _polyline_actor(self, points, width=2.0):
         vtk_points = self.d["vtkPoints"]()
