@@ -130,9 +130,9 @@ Future optical expansion should add bundle Jacobians, expansion, shear,
 magnification, caustics, and lens maps after null-geodesic validation is
 established.
 
-## Validation targets
+## Validation status
 
-Phase 4 tests currently establish the exact flat-spacetime baseline for:
+The exact flat-spacetime baseline covers:
 
 - orthonormal observer tetrads,
 - local tensor measurements,
@@ -144,17 +144,34 @@ Phase 4 tests currently establish the exact flat-spacetime baseline for:
 - equal-observer zero redshift,
 - constant parallel transport.
 
-The next reference targets should be Schwarzschild:
+Schwarzschild is now the Phase 4 curved-spacetime validation gate. The
+Development branch includes analytic/numerical checks for:
 
-- analytic Kretschmann scalar,
+- Kretschmann curvature,
 - static gravitational redshift,
-- radial/circular timelike geodesics,
-- light bending,
-- photon-sphere behavior,
-- tidal eigenvalues,
-- geodesic deviation.
+- radial timelike geodesics and Killing-energy conservation,
+- circular timelike geodesics,
+- weak-field light bending,
+- the R=3m photon sphere,
+- static-observer tidal eigenvalues.
 
-Those tests should be established before Phase 5 numerical-relativity work.
+The executable report is available through validate_schwarzschild_phase4().
+Light bending can be skipped for fast iteration.
+
+See docs/SCHWARZSCHILD_PHASE4_VALIDATION.md for the analytic formulas,
+coordinate conversions, tolerances, and usage examples.
+
+## Debugging
+
+Phase 4 scientific paths have opt-in debug tracing. Normal calls remain silent.
+
+SpacetimeSampler accepts debug=True. Geodesic, optics, and transport routines
+accept debug=True, with debug_every controlling step cadence where appropriate.
+The Schwarzschild validation report also accepts debug=True and reports each
+reference comparison.
+
+Messages are written to stderr with component-prefixed lines so debugging does
+not alter saved scientific data.
 
 ## Phase boundary
 
