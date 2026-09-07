@@ -35,27 +35,50 @@ def _dependencies():
         import tkinter as tk
         from tkinter import filedialog, messagebox, ttk
     except ImportError as exc:
-        raise RuntimeError("Tkinter is required for the Tensor Toolkit visualizer.") from exc
-    try:
-        from vtkmodules.tk.vtkTkRenderWindowInteractor import vtkTkRenderWindowInteractor
-        from vtkmodules.vtkCommonDataModel import vtkCellArray, vtkImageData, vtkPolyData, vtkPolyLine
-        from vtkmodules.vtkCommonCore import vtkPoints
-        from vtkmodules.vtkFiltersSources import vtkSphereSource
-        from vtkmodules.vtkRenderingCore import (
-            vtkActor, vtkColorTransferFunction, vtkDataSetMapper, vtkPiecewiseFunction,
-            vtkPolyDataMapper, vtkRenderer, vtkVolume, vtkVolumeProperty,
-        )
-        from vtkmodules.vtkRenderingVolumeOpenGL2 import vtkSmartVolumeMapper
-        from vtkmodules.vtkFiltersCore import vtkContourFilter
-        from vtkmodules.util.numpy_support import numpy_to_vtk
-        import vtkmodules.vtkInteractionStyle  # noqa: F401
-        import vtkmodules.vtkRenderingOpenGL2  # noqa: F401
-    except ImportError as exc:
         raise RuntimeError(
-            'VTK is required for the 3-D visualizer. Install with '
-            'python -m pip install -e ".[visualization]"'
+            f"Tkinter is required for the Tensor Toolkit visualizer: {exc}"
         ) from exc
-    return locals()
+
+    try:
+        # Use VTK's public umbrella module for wrapped rendering/data classes.
+        # This is intentionally more robust across VTK 9.x module reshuffles
+        # than importing every wrapped class from an internal vtkmodules module.
+        import vtk
+        from vtkmodules.tk.vtkTkRenderWindowInteractor import vtkTkRenderWindowInteractor
+        from vtkmodules.util.numpy_support import numpy_to_vtk
+    except Exception as exc:
+        raise RuntimeError(
+            "VTK is installed but the Tensor Toolkit visualizer could not import "
+            f"its required Python/Tk bindings ({type(exc).__name__}: {exc}). "
+            "Verify with: python -c \"import vtk; "
+            "from vtkmodules.tk.vtkTkRenderWindowInteractor import "
+            "vtkTkRenderWindowInteractor; print(vtk.vtkVersion.GetVTKVersion())\""
+        ) from exc
+
+    return {
+        "tk": tk,
+        "ttk": ttk,
+        "filedialog": filedialog,
+        "messagebox": messagebox,
+        "vtkTkRenderWindowInteractor": vtkTkRenderWindowInteractor,
+        "vtkImageData": vtk.vtkImageData,
+        "vtkRenderer": vtk.vtkRenderer,
+        "vtkVolume": vtk.vtkVolume,
+        "vtkVolumeProperty": vtk.vtkVolumeProperty,
+        "vtkColorTransferFunction": vtk.vtkColorTransferFunction,
+        "vtkPiecewiseFunction": vtk.vtkPiecewiseFunction,
+        "vtkSmartVolumeMapper": vtk.vtkSmartVolumeMapper,
+        "vtkContourFilter": vtk.vtkContourFilter,
+        "vtkDataSetMapper": vtk.vtkDataSetMapper,
+        "vtkActor": vtk.vtkActor,
+        "vtkPolyDataMapper": vtk.vtkPolyDataMapper,
+        "vtkSphereSource": vtk.vtkSphereSource,
+        "vtkPoints": vtk.vtkPoints,
+        "vtkPolyLine": vtk.vtkPolyLine,
+        "vtkCellArray": vtk.vtkCellArray,
+        "vtkPolyData": vtk.vtkPolyData,
+        "numpy_to_vtk": numpy_to_vtk,
+    }
 
 
 class TensorToolkitVTKGUI:
