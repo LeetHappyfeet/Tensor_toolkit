@@ -27,6 +27,15 @@ from tensor_toolkit.visualization_timeline import (
 
 RANK2_FIELDS = ("metric", "inverse_metric", "ricci", "einstein", "stress_energy")
 GUI_OUTPUTS = ("metric", "inverse_metric", "ricci", "ricci_scalar", "einstein", "stress_energy")
+INDEX_CHOICES = ("t (0)", "x (1)", "y (2)", "z (3)")
+FIELD_DESCRIPTIONS = {
+    "metric": "Metric tensor g_μν: spacetime geometry in the selected coordinate basis.",
+    "inverse_metric": "Inverse metric g^μν: inverse spacetime geometry in the selected coordinate basis.",
+    "ricci": "Ricci tensor R_μν: curvature contraction associated with matter/energy content.",
+    "ricci_scalar": "Ricci scalar R: scalar curvature; μ and ν do not apply.",
+    "einstein": "Einstein tensor G_μν: curvature combination used by Einstein's field equation.",
+    "stress_energy": "Stress-energy tensor T_μν: energy density, momentum density, and stresses.",
+}
 
 
 def _dependencies():
@@ -156,14 +165,20 @@ class TensorToolkitVTKGUI(QtWidgets.QMainWindow):
         self.field_box = QtWidgets.QComboBox()
         self.field_box.currentTextChanged.connect(self._field_changed)
         field_layout.addRow("Field", self.field_box)
-        self.mu_spin = QtWidgets.QSpinBox()
-        self.mu_spin.setRange(0, 3)
-        self.mu_spin.valueChanged.connect(self._field_changed)
-        field_layout.addRow("μ", self.mu_spin)
-        self.nu_spin = QtWidgets.QSpinBox()
-        self.nu_spin.setRange(0, 3)
-        self.nu_spin.valueChanged.connect(self._field_changed)
-        field_layout.addRow("ν", self.nu_spin)
+        self.mu_box = QtWidgets.QComboBox()
+        self.mu_box.addItems(INDEX_CHOICES)
+        self.mu_box.currentIndexChanged.connect(self._field_changed)
+        self.mu_box.setToolTip("First tensor index μ: 0=t, 1=x, 2=y, 3=z.")
+        field_layout.addRow("First index μ", self.mu_box)
+        self.nu_box = QtWidgets.QComboBox()
+        self.nu_box.addItems(INDEX_CHOICES)
+        self.nu_box.currentIndexChanged.connect(self._field_changed)
+        self.nu_box.setToolTip("Second tensor index ν: 0=t, 1=x, 2=y, 3=z.")
+        field_layout.addRow("Second index ν", self.nu_box)
+        self.component_label = QtWidgets.QLabel()
+        self.component_label.setWordWrap(True)
+        self.component_label.setMinimumWidth(270)
+        field_layout.addRow("Displayed quantity", self.component_label)
         self.mode_box = QtWidgets.QComboBox()
         self.mode_box.addItems(("volume", "isosurface"))
         self.mode_box.currentTextChanged.connect(self._field_changed)
@@ -218,6 +233,31 @@ class TensorToolkitVTKGUI(QtWidgets.QMainWindow):
         time_layout.addWidget(jump, 4, 3)
         layout.addWidget(time_group)
 
+        camera_group = QtWidgets.QGroupBox("3-D camera / study controls")
+        camera_layout = QtWidgets.QGridLayout(camera_group)
+        self.parallel_check = QtWidgets.QCheckBox("Orthographic projection")
+        self.parallel_check.toggled.connect(self._set_projection)
+        camera_layout.addWidget(self.parallel_check, 0, 0, 1, 2)
+        reset_camera = QtWidgets.QPushButton("Reset / fit")
+        reset_camera.clicked.connect(self._reset_camera)
+        camera_layout.addWidget(reset_camera, 0, 2)
+        for index, (label, view_name) in enumerate((
+            ("+X", "pos_x"), ("-X", "neg_x"),
+            ("+Y", "pos_y"), ("-Y", "neg_y"),
+            ("+Z", "pos_z"), ("-Z", "neg_z"),
+            ("Iso", "iso"),
+        )):
+            button = QtWidgets.QPushButton(label)
+            button.clicked.connect(lambda _checked=False, name=view_name: self._set_camera_view(name))
+            camera_layout.addWidget(button, 1 + index // 4, index % 4)
+        camera_hint = QtWidgets.QLabel(
+            "Study mode uses trackball camera control: the scene rotates only while you drag. "
+            "Use fixed axis views to return to a repeatable orientation."
+        )
+        camera_hint.setWordWrap(True)
+        camera_layout.addWidget(camera_hint, 3, 0, 1, 4)
+        layout.addWidget(camera_group)
+
         validation_group = QtWidgets.QGroupBox("Validation")
         validation_layout = QtWidgets.QVBoxLayout(validation_group)
         self.validation_label = QtWidgets.QLabel("No result loaded")
@@ -243,6 +283,7 @@ class TensorToolkitVTKGUI(QtWidgets.QMainWindow):
         self.renderer.SetBackground(0.06, 0.07, 0.09)
         self.vtk_widget.GetRenderWindow().AddRenderer(self.renderer)
         self.interactor = self.vtk_widget.GetRenderWindow().GetInteractor()
+        self.interactor.SetInteractorStyle(vtk.vtkInteractorStyleTrackballCamera())
         self.interactor.Initialize()
 
     def _metric_changed(self, *_):
@@ -452,9 +493,37 @@ class TensorToolkitVTKGUI(QtWidgets.QMainWindow):
             self.play_button.setText("▶ Play")
 
     def _field_changed(self, *_):
+        self._update_component_description()
         self.frame_cache.clear()
         self._clear_field_actor()
         self._render_time_state(force_field_rebuild=True)
+
+    def _update_component_description(self):
+        field = self.field_box.currentText()
+        description = FIELD_DESCRIPTIONS.get(field, field)
+        if field == "ricci_scalar":
+            component = "Scalar field R — no tensor component indices are used."
+            self.mu_box.setEnabled(False)
+            self.nu_box.setEnabled(False)
+        else:
+            self.mu_box.setEnabled(True)
+            self.nu_box.setEnabled(True)
+            mu = self.mu_box.currentIndex()
+            nu = self.nu_box.currentIndex()
+            names = ("t", "x", "y", "z")
+            symbol = {
+                "metric": "g", "inverse_metric": "g⁻¹", "ricci": "R",
+                "einstein": "G", "stress_energy": "T",
+            }.get(field, field)
+            component = f"Component {symbol}_{{{names[mu]}{names[nu]}}}  [{mu},{nu}]"
+            if field == "stress_energy":
+                if mu == 0 and nu == 0:
+                    component += " — energy-density component in this coordinate basis."
+                elif mu == 0 or nu == 0:
+                    component += " — energy/momentum-flow component in this coordinate basis."
+                else:
+                    component += " — spatial stress component in this coordinate basis."
+        self.component_label.setText(f"{component}\n{description}")
 
     def _tensor_frame_index(self):
         if self.result is None:
@@ -462,13 +531,13 @@ class TensorToolkitVTKGUI(QtWidgets.QMainWindow):
         return self.timeline.nearest_index(self.result.axis_values[0])
 
     def _cached_volume(self, index):
-        key = (self.field_box.currentText(), self.mu_spin.value(), self.nu_spin.value(), int(index))
+        key = (self.field_box.currentText(), self.mu_box.currentIndex(), self.nu_box.currentIndex(), int(index))
         return self.frame_cache.get(
             key,
             lambda: experiment_volume(
                 self.result,
                 self.field_box.currentText(),
-                component=(self.mu_spin.value(), self.nu_spin.value()),
+                component=(self.mu_box.currentIndex(), self.nu_box.currentIndex()),
                 time_index=int(index),
             ),
         )
@@ -528,8 +597,8 @@ class TensorToolkitVTKGUI(QtWidgets.QMainWindow):
 
     def _ensure_field_actor(self, volume, force=False):
         spec = (
-            self.field_box.currentText(), self.mu_spin.value(),
-            self.nu_spin.value(), self.mode_box.currentText()
+            self.field_box.currentText(), self.mu_box.currentIndex(),
+            self.nu_box.currentIndex(), self.mode_box.currentText()
         )
         vmin, vmax = self._volume_range(volume)
         if not force and self._volume_state is not None and self._volume_state["spec"] == spec:
@@ -686,6 +755,54 @@ class TensorToolkitVTKGUI(QtWidgets.QMainWindow):
         offset = old_pos - old_focal
         camera.SetFocalPoint(*map(float, target))
         camera.SetPosition(*map(float, target + offset))
+
+    def _set_projection(self, enabled):
+        camera = self.renderer.GetActiveCamera()
+        camera.SetParallelProjection(bool(enabled))
+        self.vtk_widget.GetRenderWindow().Render()
+
+    def _reset_camera(self):
+        self.renderer.ResetCamera()
+        self.renderer.ResetCameraClippingRange()
+        self._camera_initialized = True
+        self.vtk_widget.GetRenderWindow().Render()
+
+    def _set_camera_view(self, name):
+        camera = self.renderer.GetActiveCamera()
+        focal = np.asarray(camera.GetFocalPoint(), dtype=float)
+        bounds = self.renderer.ComputeVisiblePropBounds()
+        if bounds and all(np.isfinite(bounds)):
+            spans = np.array([
+                max(0.0, bounds[1] - bounds[0]),
+                max(0.0, bounds[3] - bounds[2]),
+                max(0.0, bounds[5] - bounds[4]),
+            ])
+            distance = max(float(np.max(spans)) * 2.5, 1.0)
+            focal = np.array([
+                0.5 * (bounds[0] + bounds[1]),
+                0.5 * (bounds[2] + bounds[3]),
+                0.5 * (bounds[4] + bounds[5]),
+            ])
+        else:
+            distance = max(float(camera.GetDistance()), 1.0)
+
+        directions = {
+            "pos_x": (np.array([1.0, 0.0, 0.0]), np.array([0.0, 0.0, 1.0])),
+            "neg_x": (np.array([-1.0, 0.0, 0.0]), np.array([0.0, 0.0, 1.0])),
+            "pos_y": (np.array([0.0, 1.0, 0.0]), np.array([0.0, 0.0, 1.0])),
+            "neg_y": (np.array([0.0, -1.0, 0.0]), np.array([0.0, 0.0, 1.0])),
+            "pos_z": (np.array([0.0, 0.0, 1.0]), np.array([0.0, 1.0, 0.0])),
+            "neg_z": (np.array([0.0, 0.0, -1.0]), np.array([0.0, 1.0, 0.0])),
+            "iso": (np.array([1.0, 1.0, 1.0]) / np.sqrt(3.0), np.array([0.0, 0.0, 1.0])),
+        }
+        direction, up = directions[name]
+        camera.SetFocalPoint(*map(float, focal))
+        camera.SetPosition(*map(float, focal + distance * direction))
+        camera.SetViewUp(*map(float, up))
+        camera.OrthogonalizeViewUp()
+        self.renderer.ResetCameraClippingRange()
+        self._camera_initialized = True
+        self.vtk_widget.GetRenderWindow().Render()
 
     def _jump_event(self):
         if self.trajectory is None or not self.trajectory.events:
