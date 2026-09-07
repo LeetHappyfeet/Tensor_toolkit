@@ -1,8 +1,8 @@
-"""VTK desktop visualizer for Tensor Toolkit.
+"""Qt/VTK desktop visualizer for Tensor Toolkit.
 
 The GUI is downstream of tensor_toolkit.visualization_data and
-visualization_timeline. VTK receives normalized stored results and never
-advances the physics solver.
+visualization_timeline. It displays stored solver results and never advances
+or modifies the physics engine.
 """
 from __future__ import annotations
 
@@ -25,315 +25,347 @@ from tensor_toolkit.visualization_timeline import (
     trajectory_trail,
 )
 
-
 RANK2_FIELDS = ("metric", "inverse_metric", "ricci", "einstein", "stress_energy")
 GUI_OUTPUTS = ("metric", "inverse_metric", "ricci", "ricci_scalar", "einstein", "stress_energy")
 
 
 def _dependencies():
     try:
-        import tkinter as tk
-        from tkinter import filedialog, messagebox, ttk
+        from PySide6 import QtCore, QtWidgets
+        from PySide6.QtCore import Signal
     except ImportError as exc:
         raise RuntimeError(
-            f"Tkinter is required for the Tensor Toolkit visualizer: {exc}"
+            'Qt is required for the VTK desktop visualizer. Install with '
+            'python -m pip install -e ".[visualization]"'
         ) from exc
-
     try:
-        # Use VTK's public umbrella module for wrapped rendering/data classes.
-        # This is intentionally more robust across VTK 9.x module reshuffles
-        # than importing every wrapped class from an internal vtkmodules module.
         import vtk
-        from vtkmodules.tk.vtkTkRenderWindowInteractor import vtkTkRenderWindowInteractor
+        from vtkmodules.qt.QVTKRenderWindowInteractor import QVTKRenderWindowInteractor
         from vtkmodules.util.numpy_support import numpy_to_vtk
     except Exception as exc:
         raise RuntimeError(
-            "VTK is installed but the Tensor Toolkit visualizer could not import "
-            f"its required Python/Tk bindings ({type(exc).__name__}: {exc}). "
-            "Verify with: python -c \"import vtk; "
-            "from vtkmodules.tk.vtkTkRenderWindowInteractor import "
-            "vtkTkRenderWindowInteractor; print(vtk.vtkVersion.GetVTKVersion())\""
+            "VTK is installed but its Qt rendering bindings could not be loaded "
+            f"({type(exc).__name__}: {exc})."
         ) from exc
-
-    return {
-        "tk": tk,
-        "ttk": ttk,
-        "filedialog": filedialog,
-        "messagebox": messagebox,
-        "vtkTkRenderWindowInteractor": vtkTkRenderWindowInteractor,
-        "vtkImageData": vtk.vtkImageData,
-        "vtkRenderer": vtk.vtkRenderer,
-        "vtkVolume": vtk.vtkVolume,
-        "vtkVolumeProperty": vtk.vtkVolumeProperty,
-        "vtkColorTransferFunction": vtk.vtkColorTransferFunction,
-        "vtkPiecewiseFunction": vtk.vtkPiecewiseFunction,
-        "vtkSmartVolumeMapper": vtk.vtkSmartVolumeMapper,
-        "vtkContourFilter": vtk.vtkContourFilter,
-        "vtkDataSetMapper": vtk.vtkDataSetMapper,
-        "vtkActor": vtk.vtkActor,
-        "vtkPolyDataMapper": vtk.vtkPolyDataMapper,
-        "vtkSphereSource": vtk.vtkSphereSource,
-        "vtkPoints": vtk.vtkPoints,
-        "vtkPolyLine": vtk.vtkPolyLine,
-        "vtkCellArray": vtk.vtkCellArray,
-        "vtkPolyData": vtk.vtkPolyData,
-        "numpy_to_vtk": numpy_to_vtk,
-    }
+    return QtCore, QtWidgets, Signal, vtk, QVTKRenderWindowInteractor, numpy_to_vtk
 
 
-class TensorToolkitVTKGUI:
-    """Interactive 3-D field and trajectory viewer over stored solver results."""
+QtCore, QtWidgets, Signal, vtk, QVTKRenderWindowInteractor, numpy_to_vtk = _dependencies()
+
+
+class _WorkerSignals(QtCore.QObject):
+    finished = Signal(object)
+    failed = Signal(str)
+
+
+class TensorToolkitVTKGUI(QtWidgets.QMainWindow):
+    """Interactive VTK field/trajectory viewer over authoritative stored results."""
 
     TICK_MS = 16
+    SLIDER_STEPS = 10000
 
-    def __init__(self, root):
-        self.d = _dependencies()
-        self.tk = self.d["tk"]
-        self.ttk = self.d["ttk"]
-        self.root = root
-        self.root.title("Tensor Toolkit — VTK Scientific Visualizer")
-        self.root.geometry("1550x920")
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("Tensor Toolkit — VTK Scientific Visualizer")
+        self.resize(1550, 920)
 
         self.result = None
         self.trajectory = None
         self.timeline = VisualizationTimeline(0.0, 1.0, 0.0)
         self.frame_cache = FrameCache(5)
-        self._parameter_vars = {}
         self._volume_state = None
         self._body_actors = {}
         self._trail_actors = {}
         self._event_actors = []
         self._camera_initialized = False
-        self._scrubbing = False
-
-        self.metric_var = self.tk.StringVar(value="alcubierre")
-        self.points_var = self.tk.IntVar(value=9)
-        self.extent_var = self.tk.DoubleVar(value=2.0)
-        self.field_var = self.tk.StringVar(value="stress_energy")
-        self.mu_var = self.tk.IntVar(value=0)
-        self.nu_var = self.tk.IntVar(value=0)
-        self.mode_var = self.tk.StringVar(value="volume")
-        self.status_var = self.tk.StringVar(value="Ready")
-        self.validation_var = self.tk.StringVar(value="No result loaded")
-
-        self.timeline_var = self.tk.DoubleVar(value=0.0)
-        self.timeline_text_var = self.tk.StringVar(value="t = 0")
-        self.play_text_var = self.tk.StringVar(value="▶ Play")
-        self.playback_var = self.tk.StringVar(value="1")
-        self.loop_var = self.tk.BooleanVar(value=False)
-        self.trail_var = self.tk.DoubleVar(value=0.0)
-        self.follow_var = self.tk.StringVar(value="World")
-        self.event_var = self.tk.StringVar(value="")
-
-        self.output_vars = {
-            name: self.tk.BooleanVar(value=name in {"metric", "einstein", "stress_energy"})
-            for name in GUI_OUTPUTS
-        }
+        self._parameter_edits = {}
+        self._worker_signals = _WorkerSignals()
+        self._worker_signals.finished.connect(self._accept_result)
+        self._worker_signals.failed.connect(self._worker_failed)
 
         self._build_layout()
         self._metric_changed()
         self._update_field_choices()
-        self.root.after(self.TICK_MS, self._tick)
+
+        self.timer = QtCore.QTimer(self)
+        self.timer.timeout.connect(self._tick)
+        self.timer.start(self.TICK_MS)
 
     def _build_layout(self):
-        ttk = self.ttk
-        outer = ttk.Panedwindow(self.root, orient="horizontal")
-        outer.pack(fill="both", expand=True)
+        splitter = QtWidgets.QSplitter(QtCore.Qt.Orientation.Horizontal)
+        self.setCentralWidget(splitter)
 
-        controls = ttk.Frame(outer, padding=8)
-        view = ttk.Frame(outer)
-        outer.add(controls, weight=0)
-        outer.add(view, weight=1)
+        controls_scroll = QtWidgets.QScrollArea()
+        controls_scroll.setWidgetResizable(True)
+        controls = QtWidgets.QWidget()
+        controls_scroll.setWidget(controls)
+        controls.setMinimumWidth(330)
+        layout = QtWidgets.QVBoxLayout(controls)
 
-        row = 0
-        ttk.Label(controls, text="Experiment", font=("", 11, "bold")).grid(row=row, column=0, columnspan=2, sticky="w")
-        row += 1
-        metric_box = ttk.Combobox(controls, textvariable=self.metric_var, values=sorted(builtins()), state="readonly", width=20)
-        metric_box.grid(row=row, column=0, columnspan=2, sticky="ew", pady=(2, 6))
-        metric_box.bind("<<ComboboxSelected>>", lambda _e: self._metric_changed())
-        row += 1
+        exp_group = QtWidgets.QGroupBox("Experiment")
+        exp_layout = QtWidgets.QFormLayout(exp_group)
+        self.metric_box = QtWidgets.QComboBox()
+        self.metric_box.addItems(sorted(builtins()))
+        self.metric_box.setCurrentText("alcubierre")
+        self.metric_box.currentTextChanged.connect(self._metric_changed)
+        exp_layout.addRow("Metric", self.metric_box)
 
-        self.parameter_frame = ttk.LabelFrame(controls, text="Metric parameters", padding=6)
-        self.parameter_frame.grid(row=row, column=0, columnspan=2, sticky="ew", pady=4)
-        row += 1
+        self.parameter_group = QtWidgets.QGroupBox("Metric parameters")
+        self.parameter_layout = QtWidgets.QFormLayout(self.parameter_group)
+        exp_layout.addRow(self.parameter_group)
 
-        ttk.Label(controls, text="Points / axis").grid(row=row, column=0, sticky="w")
-        ttk.Spinbox(controls, from_=3, to=257, textvariable=self.points_var, width=9).grid(row=row, column=1, sticky="ew")
-        row += 1
-        ttk.Label(controls, text="Extent ±").grid(row=row, column=0, sticky="w")
-        ttk.Entry(controls, textvariable=self.extent_var, width=10).grid(row=row, column=1, sticky="ew")
-        row += 1
+        self.points_spin = QtWidgets.QSpinBox()
+        self.points_spin.setRange(3, 257)
+        self.points_spin.setValue(9)
+        exp_layout.addRow("Points / axis", self.points_spin)
 
-        outputs = ttk.LabelFrame(controls, text="Retained fields", padding=6)
-        outputs.grid(row=row, column=0, columnspan=2, sticky="ew", pady=6)
-        for i, name in enumerate(GUI_OUTPUTS):
-            ttk.Checkbutton(outputs, text=name, variable=self.output_vars[name]).grid(row=i, column=0, sticky="w")
-        row += 1
+        self.extent_spin = QtWidgets.QDoubleSpinBox()
+        self.extent_spin.setRange(1e-12, 1e12)
+        self.extent_spin.setDecimals(6)
+        self.extent_spin.setValue(2.0)
+        exp_layout.addRow("Extent ±", self.extent_spin)
+        layout.addWidget(exp_group)
 
-        ttk.Button(controls, text="Run experiment", command=self._run).grid(row=row, column=0, sticky="ew", pady=3)
-        ttk.Button(controls, text="Open tensor result", command=self._open).grid(row=row, column=1, sticky="ew", pady=3)
-        row += 1
-        ttk.Button(controls, text="Open trajectory", command=self._open_trajectory).grid(row=row, column=0, sticky="ew", pady=3)
-        ttk.Button(controls, text="Save tensor result", command=self._save).grid(row=row, column=1, sticky="ew", pady=3)
-        row += 1
+        output_group = QtWidgets.QGroupBox("Retained fields")
+        output_layout = QtWidgets.QVBoxLayout(output_group)
+        self.output_checks = {}
+        for name in GUI_OUTPUTS:
+            check = QtWidgets.QCheckBox(name)
+            check.setChecked(name in {"metric", "einstein", "stress_energy"})
+            output_layout.addWidget(check)
+            self.output_checks[name] = check
+        layout.addWidget(output_group)
 
-        render = ttk.LabelFrame(controls, text="3-D field", padding=6)
-        render.grid(row=row, column=0, columnspan=2, sticky="ew", pady=8)
-        ttk.Label(render, text="Field").grid(row=0, column=0, sticky="w")
-        self.field_box = ttk.Combobox(render, textvariable=self.field_var, state="readonly", width=18)
-        self.field_box.grid(row=0, column=1, sticky="ew")
-        self.field_box.bind("<<ComboboxSelected>>", lambda _e: self._field_changed())
-        ttk.Label(render, text="μ").grid(row=1, column=0, sticky="w")
-        ttk.Spinbox(render, from_=0, to=3, textvariable=self.mu_var, width=5, command=self._field_changed).grid(row=1, column=1, sticky="ew")
-        ttk.Label(render, text="ν").grid(row=2, column=0, sticky="w")
-        ttk.Spinbox(render, from_=0, to=3, textvariable=self.nu_var, width=5, command=self._field_changed).grid(row=2, column=1, sticky="ew")
-        ttk.Label(render, text="Mode").grid(row=3, column=0, sticky="w")
-        mode = ttk.Combobox(render, textvariable=self.mode_var, values=("volume", "isosurface"), state="readonly", width=12)
-        mode.grid(row=3, column=1, sticky="ew")
-        mode.bind("<<ComboboxSelected>>", lambda _e: self._field_changed())
-        row += 1
+        run_row = QtWidgets.QGridLayout()
+        self.run_button = QtWidgets.QPushButton("Run experiment")
+        self.run_button.clicked.connect(self._run)
+        run_row.addWidget(self.run_button, 0, 0)
+        open_tensor = QtWidgets.QPushButton("Open tensor result")
+        open_tensor.clicked.connect(self._open_tensor)
+        run_row.addWidget(open_tensor, 0, 1)
+        open_traj = QtWidgets.QPushButton("Open trajectory")
+        open_traj.clicked.connect(self._open_trajectory)
+        run_row.addWidget(open_traj, 1, 0)
+        save_tensor = QtWidgets.QPushButton("Save tensor result")
+        save_tensor.clicked.connect(self._save)
+        run_row.addWidget(save_tensor, 1, 1)
+        layout.addLayout(run_row)
 
-        timeline_box = ttk.LabelFrame(controls, text="Visualization timeline", padding=6)
-        timeline_box.grid(row=row, column=0, columnspan=2, sticky="ew", pady=8)
-        ttk.Label(timeline_box, textvariable=self.timeline_text_var).grid(row=0, column=0, columnspan=4, sticky="w")
-        self.timeline_scale = ttk.Scale(
-            timeline_box, variable=self.timeline_var, from_=0.0, to=1.0,
-            command=self._timeline_scrub,
-        )
-        self.timeline_scale.grid(row=1, column=0, columnspan=4, sticky="ew", pady=3)
-        self.play_button = ttk.Button(timeline_box, textvariable=self.play_text_var, command=self._toggle_play)
-        self.play_button.grid(row=2, column=0, sticky="ew")
-        ttk.Label(timeline_box, text="Rate").grid(row=2, column=1, sticky="e")
-        rate = ttk.Combobox(timeline_box, textvariable=self.playback_var, values=("0.1", "1", "10", "100", "1000", "3600", "86400"), width=8)
-        rate.grid(row=2, column=2, sticky="ew")
-        rate.bind("<<ComboboxSelected>>", lambda _e: self._playback_changed())
-        rate.bind("<Return>", lambda _e: self._playback_changed())
-        ttk.Checkbutton(timeline_box, text="Loop", variable=self.loop_var, command=self._playback_changed).grid(row=2, column=3, sticky="w")
-        ttk.Label(timeline_box, text="Trail seconds").grid(row=3, column=0, sticky="w")
-        ttk.Entry(timeline_box, textvariable=self.trail_var, width=10).grid(row=3, column=1, sticky="ew")
-        ttk.Label(timeline_box, text="Follow").grid(row=3, column=2, sticky="e")
-        self.follow_box = ttk.Combobox(timeline_box, textvariable=self.follow_var, values=("World",), state="readonly", width=12)
-        self.follow_box.grid(row=3, column=3, sticky="ew")
-        self.follow_box.bind("<<ComboboxSelected>>", lambda _e: self._render_time_state())
-        ttk.Label(timeline_box, text="Event").grid(row=4, column=0, sticky="w")
-        self.event_box = ttk.Combobox(timeline_box, textvariable=self.event_var, values=(), state="readonly", width=18)
-        self.event_box.grid(row=4, column=1, columnspan=2, sticky="ew")
-        ttk.Button(timeline_box, text="Jump", command=self._jump_event).grid(row=4, column=3, sticky="ew")
-        timeline_box.columnconfigure(0, weight=1)
-        timeline_box.columnconfigure(2, weight=1)
-        row += 1
+        field_group = QtWidgets.QGroupBox("3-D field")
+        field_layout = QtWidgets.QFormLayout(field_group)
+        self.field_box = QtWidgets.QComboBox()
+        self.field_box.currentTextChanged.connect(self._field_changed)
+        field_layout.addRow("Field", self.field_box)
+        self.mu_spin = QtWidgets.QSpinBox()
+        self.mu_spin.setRange(0, 3)
+        self.mu_spin.valueChanged.connect(self._field_changed)
+        field_layout.addRow("μ", self.mu_spin)
+        self.nu_spin = QtWidgets.QSpinBox()
+        self.nu_spin.setRange(0, 3)
+        self.nu_spin.valueChanged.connect(self._field_changed)
+        field_layout.addRow("ν", self.nu_spin)
+        self.mode_box = QtWidgets.QComboBox()
+        self.mode_box.addItems(("volume", "isosurface"))
+        self.mode_box.currentTextChanged.connect(self._field_changed)
+        field_layout.addRow("Mode", self.mode_box)
+        layout.addWidget(field_group)
 
-        ttk.Label(controls, text="Validation", font=("", 10, "bold")).grid(row=row, column=0, columnspan=2, sticky="w", pady=(8, 0))
-        row += 1
-        ttk.Label(controls, textvariable=self.validation_var, wraplength=310, justify="left").grid(row=row, column=0, columnspan=2, sticky="ew")
-        row += 1
-        ttk.Label(controls, textvariable=self.status_var, wraplength=310, justify="left").grid(row=row, column=0, columnspan=2, sticky="ew", pady=(8, 0))
-        controls.columnconfigure(1, weight=1)
+        time_group = QtWidgets.QGroupBox("Visualization timeline")
+        time_layout = QtWidgets.QGridLayout(time_group)
+        self.time_label = QtWidgets.QLabel("t = 0")
+        time_layout.addWidget(self.time_label, 0, 0, 1, 4)
 
-        self.renderer = self.d["vtkRenderer"]()
+        self.timeline_slider = QtWidgets.QSlider(QtCore.Qt.Orientation.Horizontal)
+        self.timeline_slider.setRange(0, self.SLIDER_STEPS)
+        self.timeline_slider.sliderPressed.connect(self._pause_for_scrub)
+        self.timeline_slider.valueChanged.connect(self._timeline_slider_changed)
+        time_layout.addWidget(self.timeline_slider, 1, 0, 1, 4)
+
+        self.play_button = QtWidgets.QPushButton("▶ Play")
+        self.play_button.clicked.connect(self._toggle_play)
+        time_layout.addWidget(self.play_button, 2, 0)
+
+        self.rate_box = QtWidgets.QComboBox()
+        self.rate_box.setEditable(True)
+        self.rate_box.addItems(("0.1", "1", "10", "100", "1000", "3600", "86400"))
+        self.rate_box.setCurrentText("1")
+        self.rate_box.currentTextChanged.connect(self._playback_changed)
+        time_layout.addWidget(QtWidgets.QLabel("Rate"), 2, 1)
+        time_layout.addWidget(self.rate_box, 2, 2)
+
+        self.loop_check = QtWidgets.QCheckBox("Loop")
+        self.loop_check.toggled.connect(self._playback_changed)
+        time_layout.addWidget(self.loop_check, 2, 3)
+
+        self.trail_spin = QtWidgets.QDoubleSpinBox()
+        self.trail_spin.setRange(0.0, 1e15)
+        self.trail_spin.setDecimals(3)
+        self.trail_spin.valueChanged.connect(self._render_time_state)
+        time_layout.addWidget(QtWidgets.QLabel("Trail seconds"), 3, 0)
+        time_layout.addWidget(self.trail_spin, 3, 1)
+
+        self.follow_box = QtWidgets.QComboBox()
+        self.follow_box.addItem("World")
+        self.follow_box.currentTextChanged.connect(self._render_time_state)
+        time_layout.addWidget(QtWidgets.QLabel("Follow"), 3, 2)
+        time_layout.addWidget(self.follow_box, 3, 3)
+
+        self.event_box = QtWidgets.QComboBox()
+        time_layout.addWidget(QtWidgets.QLabel("Event"), 4, 0)
+        time_layout.addWidget(self.event_box, 4, 1, 1, 2)
+        jump = QtWidgets.QPushButton("Jump")
+        jump.clicked.connect(self._jump_event)
+        time_layout.addWidget(jump, 4, 3)
+        layout.addWidget(time_group)
+
+        validation_group = QtWidgets.QGroupBox("Validation")
+        validation_layout = QtWidgets.QVBoxLayout(validation_group)
+        self.validation_label = QtWidgets.QLabel("No result loaded")
+        self.validation_label.setWordWrap(True)
+        self.status_label = QtWidgets.QLabel("Ready")
+        self.status_label.setWordWrap(True)
+        validation_layout.addWidget(self.validation_label)
+        validation_layout.addWidget(self.status_label)
+        layout.addWidget(validation_group)
+        layout.addStretch(1)
+
+        render_container = QtWidgets.QFrame()
+        render_layout = QtWidgets.QVBoxLayout(render_container)
+        render_layout.setContentsMargins(0, 0, 0, 0)
+        self.vtk_widget = QVTKRenderWindowInteractor(render_container)
+        render_layout.addWidget(self.vtk_widget)
+
+        splitter.addWidget(controls_scroll)
+        splitter.addWidget(render_container)
+        splitter.setStretchFactor(1, 1)
+
+        self.renderer = vtk.vtkRenderer()
         self.renderer.SetBackground(0.06, 0.07, 0.09)
-        self.interactor = self.d["vtkTkRenderWindowInteractor"](view, width=1050, height=850)
-        self.interactor.pack(fill="both", expand=True)
-        self.interactor.GetRenderWindow().AddRenderer(self.renderer)
+        self.vtk_widget.GetRenderWindow().AddRenderer(self.renderer)
+        self.interactor = self.vtk_widget.GetRenderWindow().GetInteractor()
         self.interactor.Initialize()
 
-    def _metric_changed(self):
-        for child in self.parameter_frame.winfo_children():
-            child.destroy()
-        self._parameter_vars.clear()
-        experiment = get_experiment(self.metric_var.get())
-        for row, (name, value) in enumerate(editable_metric_parameters(experiment.metric).items()):
-            self.ttk.Label(self.parameter_frame, text=name).grid(row=row, column=0, sticky="w")
-            var = self.tk.DoubleVar(value=value)
-            self.ttk.Entry(self.parameter_frame, textvariable=var, width=12).grid(row=row, column=1, sticky="ew")
-            self._parameter_vars[name] = var
+    def _metric_changed(self, *_):
+        while self.parameter_layout.rowCount():
+            self.parameter_layout.removeRow(0)
+        self._parameter_edits.clear()
+        experiment = get_experiment(self.metric_box.currentText())
+        for name, value in editable_metric_parameters(experiment.metric).items():
+            edit = QtWidgets.QDoubleSpinBox()
+            edit.setDecimals(9)
+            edit.setRange(-1e15, 1e15)
+            edit.setValue(float(value))
+            self.parameter_layout.addRow(name, edit)
+            self._parameter_edits[name] = edit
 
     def _selected_outputs(self):
-        outputs = frozenset(name for name, var in self.output_vars.items() if var.get())
+        outputs = frozenset(name for name, box in self.output_checks.items() if box.isChecked())
         if not outputs:
             raise ValueError("select at least one retained field")
         return outputs
 
     def _build_experiment(self):
-        experiment = get_experiment(self.metric_var.get())
-        experiment = replace_metric_parameters(experiment, {n: v.get() for n, v in self._parameter_vars.items()})
-        experiment = configure_grid(experiment, points=int(self.points_var.get()), extent=float(self.extent_var.get()))
+        experiment = get_experiment(self.metric_box.currentText())
+        experiment = replace_metric_parameters(
+            experiment, {name: edit.value() for name, edit in self._parameter_edits.items()}
+        )
+        experiment = configure_grid(
+            experiment, points=self.points_spin.value(), extent=self.extent_spin.value()
+        )
         return replace(experiment, outputs=self._selected_outputs())
 
     def _run(self):
         try:
             experiment = self._build_experiment()
         except Exception as exc:
-            self.d["messagebox"].showerror("Invalid experiment", str(exc))
+            QtWidgets.QMessageBox.critical(self, "Invalid experiment", str(exc))
             return
-        self.status_var.set("Calculating on the validated CPU/NumPy pipeline…")
+        self.run_button.setEnabled(False)
+        self.status_label.setText("Calculating on the validated CPU/NumPy pipeline…")
+
         def worker():
             try:
                 result = run_experiment(experiment)
             except Exception as exc:
-                self.root.after(0, lambda: self._worker_failed(exc))
+                self._worker_signals.failed.emit(str(exc))
                 return
-            self.root.after(0, lambda: self._accept_result(result))
+            self._worker_signals.finished.emit(result)
+
         threading.Thread(target=worker, daemon=True).start()
 
-    def _worker_failed(self, exc):
-        self.status_var.set("Calculation failed")
-        self.d["messagebox"].showerror("Tensor Toolkit", str(exc))
+    @QtCore.Slot(str)
+    def _worker_failed(self, message):
+        self.run_button.setEnabled(True)
+        self.status_label.setText("Calculation failed")
+        QtWidgets.QMessageBox.critical(self, "Tensor Toolkit", message)
 
     def _clear_field_actor(self):
         if self._volume_state is not None:
             self.renderer.RemoveViewProp(self._volume_state["actor"])
         self._volume_state = None
 
+    @QtCore.Slot(object)
     def _accept_result(self, result):
+        self.run_button.setEnabled(True)
         self.result = result
         self.frame_cache.clear()
         self._clear_field_actor()
         self._camera_initialized = False
         self._update_field_choices()
         diagnostics = result.metadata.get("diagnostics", {})
-        self.validation_var.set(f"Pipeline validation status: {diagnostics.get('status', 'unknown')}")
-        self.status_var.set(f"Loaded {result.metric_name}; grid {result.metadata.get('shape', '?')}")
+        self.validation_label.setText(
+            f"Pipeline validation status: {diagnostics.get('status', 'unknown')}"
+        )
+        self.status_label.setText(
+            f"Loaded {result.metric_name}; grid {result.metadata.get('shape', '?')}"
+        )
         self._sync_timeline_range()
         self._field_changed()
 
     def _update_field_choices(self):
+        previous = self.field_box.currentText()
+        self.field_box.blockSignals(True)
+        self.field_box.clear()
         fields = [name for name in RANK2_FIELDS if self.result is None or name in self.result.fields]
         if self.result is not None and "ricci_scalar" in self.result.fields:
             fields.append("ricci_scalar")
-        self.field_box.configure(values=fields)
-        if fields and self.field_var.get() not in fields:
-            self.field_var.set(fields[0])
+        self.field_box.addItems(fields)
+        if previous in fields:
+            self.field_box.setCurrentText(previous)
+        elif "stress_energy" in fields:
+            self.field_box.setCurrentText("stress_energy")
+        self.field_box.blockSignals(False)
 
-    def _open(self):
-        path = self.d["filedialog"].askdirectory(title="Open Tensor Toolkit tensor result")
+    def _open_tensor(self):
+        path = QtWidgets.QFileDialog.getExistingDirectory(self, "Open Tensor Toolkit tensor result")
         if not path:
             return
         try:
             metadata, fields, axes = load_result(path)
-            self._accept_result(ExperimentResult(
+            result = ExperimentResult(
                 metric_name=str(metadata.get("metric_name", "unknown")),
                 coordinates=tuple(metadata.get("coordinates", ("t", "x", "y", "z"))),
                 axis_values=tuple(axes),
                 fields=fields,
                 metadata={k: v for k, v in metadata.items() if k not in {"metric_name", "coordinates", "fields"}},
-            ))
+            )
+            self._accept_result(result)
         except Exception as exc:
-            self.d["messagebox"].showerror("Open result", str(exc))
+            QtWidgets.QMessageBox.critical(self, "Open result", str(exc))
 
     def _open_trajectory(self):
-        path = self.d["filedialog"].askdirectory(title="Open saved classical simulation")
+        path = QtWidgets.QFileDialog.getExistingDirectory(self, "Open saved classical simulation")
         if not path:
             return
         try:
             self.trajectory = load_saved_trajectory(path)
         except Exception as exc:
-            self.d["messagebox"].showerror("Open trajectory", str(exc))
+            QtWidgets.QMessageBox.critical(self, "Open trajectory", str(exc))
             return
         self._build_trajectory_scene()
         self._camera_initialized = False
         self._sync_timeline_range()
-        self.status_var.set(
+        self.status_label.setText(
             f"Loaded trajectory with {len(self.trajectory.body_names)} bodies and "
             f"{len(self.trajectory.events)} events"
         )
@@ -341,15 +373,16 @@ class TensorToolkitVTKGUI:
 
     def _save(self):
         if self.result is None:
-            self.d["messagebox"].showinfo("Save result", "Run or open a tensor result first.")
+            QtWidgets.QMessageBox.information(self, "Save result", "Run or open a tensor result first.")
             return
-        path = self.d["filedialog"].askdirectory(title="Choose result directory")
-        if path:
-            try:
-                save_result(self.result, Path(path))
-                self.status_var.set(f"Saved result to {path}")
-            except Exception as exc:
-                self.d["messagebox"].showerror("Save result", str(exc))
+        path = QtWidgets.QFileDialog.getExistingDirectory(self, "Choose result directory")
+        if not path:
+            return
+        try:
+            save_result(self.result, Path(path))
+            self.status_label.setText(f"Saved result to {path}")
+        except Exception as exc:
+            QtWidgets.QMessageBox.critical(self, "Save result", str(exc))
 
     def _sync_timeline_range(self):
         ranges = []
@@ -360,48 +393,65 @@ class TensorToolkitVTKGUI:
             ranges.append((float(self.trajectory.times[0]), float(self.trajectory.times[-1])))
         if not ranges:
             return
-        start = min(v[0] for v in ranges)
-        stop = max(v[1] for v in ranges)
+        start = min(a for a, _ in ranges)
+        stop = max(b for _, b in ranges)
         self.timeline.set_range(start, stop)
         self.timeline.seek(start)
-        self.timeline_scale.configure(from_=start, to=stop if stop > start else start + 1.0)
-        self.timeline_var.set(start)
+        self._set_slider_from_time(start)
         self._update_time_text()
 
     def _toggle_play(self):
         self._playback_changed()
         playing = self.timeline.toggle()
-        self.play_text_var.set("❚❚ Pause" if playing else "▶ Play")
+        self.play_button.setText("❚❚ Pause" if playing else "▶ Play")
 
-    def _playback_changed(self):
+    def _playback_changed(self, *_):
         try:
-            rate = float(self.playback_var.get())
+            rate = float(self.rate_box.currentText())
             if rate <= 0 or not np.isfinite(rate):
                 raise ValueError
         except ValueError:
-            self.status_var.set("Playback rate must be a positive finite number")
+            self.status_label.setText("Playback rate must be a positive finite number")
             return
         self.timeline.playback_rate = rate
-        self.timeline.loop = bool(self.loop_var.get())
+        self.timeline.loop = self.loop_check.isChecked()
 
-    def _timeline_scrub(self, value):
+    def _pause_for_scrub(self):
         self.timeline.pause()
-        self.play_text_var.set("▶ Play")
-        self.timeline.seek(float(value))
-        self.timeline_var.set(self.timeline.current)
-        self._render_time_state()
+        self.play_button.setText("▶ Play")
+
+    def _time_from_slider(self, slider_value):
+        if self.timeline.stop <= self.timeline.start:
+            return self.timeline.start
+        fraction = float(slider_value) / self.SLIDER_STEPS
+        return self.timeline.start + fraction * (self.timeline.stop - self.timeline.start)
+
+    def _slider_from_time(self, time_value):
+        if self.timeline.stop <= self.timeline.start:
+            return 0
+        fraction = (float(time_value) - self.timeline.start) / (self.timeline.stop - self.timeline.start)
+        return int(np.clip(round(fraction * self.SLIDER_STEPS), 0, self.SLIDER_STEPS))
+
+    def _set_slider_from_time(self, time_value):
+        self.timeline_slider.blockSignals(True)
+        self.timeline_slider.setValue(self._slider_from_time(time_value))
+        self.timeline_slider.blockSignals(False)
+
+    def _timeline_slider_changed(self, value):
+        if self.timeline_slider.isSliderDown():
+            self.timeline.seek(self._time_from_slider(value))
+            self._render_time_state()
 
     def _tick(self):
         before = self.timeline.current
         now = self.timeline.advance()
         if now != before:
-            self.timeline_var.set(now)
+            self._set_slider_from_time(now)
             self._render_time_state()
-        if not self.timeline.playing and self.play_text_var.get() != "▶ Play":
-            self.play_text_var.set("▶ Play")
-        self.root.after(self.TICK_MS, self._tick)
+        if not self.timeline.playing and self.play_button.text() != "▶ Play":
+            self.play_button.setText("▶ Play")
 
-    def _field_changed(self):
+    def _field_changed(self, *_):
         self.frame_cache.clear()
         self._clear_field_actor()
         self._render_time_state(force_field_rebuild=True)
@@ -412,12 +462,13 @@ class TensorToolkitVTKGUI:
         return self.timeline.nearest_index(self.result.axis_values[0])
 
     def _cached_volume(self, index):
-        key = (self.field_var.get(), int(self.mu_var.get()), int(self.nu_var.get()), int(index))
+        key = (self.field_box.currentText(), self.mu_spin.value(), self.nu_spin.value(), int(index))
         return self.frame_cache.get(
             key,
             lambda: experiment_volume(
-                self.result, self.field_var.get(),
-                component=(int(self.mu_var.get()), int(self.nu_var.get())),
+                self.result,
+                self.field_box.currentText(),
+                component=(self.mu_spin.value(), self.nu_spin.value()),
                 time_index=int(index),
             ),
         )
@@ -430,7 +481,7 @@ class TensorToolkitVTKGUI:
             self._cached_volume(i)
 
     def _vtk_image(self, volume):
-        image = self.d["vtkImageData"]()
+        image = vtk.vtkImageData()
         nx, ny, nz = volume.values.shape
         image.SetDimensions(nx, ny, nz)
         axes = (volume.x, volume.y, volume.z)
@@ -441,7 +492,7 @@ class TensorToolkitVTKGUI:
 
     def _set_image_scalars(self, image, volume):
         flat = np.ascontiguousarray(volume.values).ravel(order="F")
-        vtk_values = self.d["numpy_to_vtk"](flat, deep=True)
+        vtk_values = numpy_to_vtk(flat, deep=True)
         vtk_values.SetName(volume.name)
         image.GetPointData().SetScalars(vtk_values)
         image.GetPointData().Modified()
@@ -461,8 +512,7 @@ class TensorToolkitVTKGUI:
         if state.get("contour") is not None:
             state["contour"].SetValue(0, middle)
             state["contour"].Modified()
-        color = state.get("color")
-        opacity = state.get("opacity")
+        color, opacity = state.get("color"), state.get("opacity")
         if color is not None and opacity is not None:
             color.RemoveAllPoints()
             color.AddRGBPoint(vmin, 0.1, 0.2, 0.8)
@@ -477,79 +527,68 @@ class TensorToolkitVTKGUI:
         state["range"] = (vmin, vmax)
 
     def _ensure_field_actor(self, volume, force=False):
-        spec = (self.field_var.get(), int(self.mu_var.get()), int(self.nu_var.get()), self.mode_var.get())
+        spec = (
+            self.field_box.currentText(), self.mu_spin.value(),
+            self.nu_spin.value(), self.mode_box.currentText()
+        )
         vmin, vmax = self._volume_range(volume)
         if not force and self._volume_state is not None and self._volume_state["spec"] == spec:
             self._set_image_scalars(self._volume_state["image"], volume)
             self._update_field_transfer(self._volume_state, vmin, vmax)
             return
-
         if self._volume_state is not None:
             self.renderer.RemoveViewProp(self._volume_state["actor"])
 
         image = self._vtk_image(volume)
-
-        if self.mode_var.get() == "isosurface":
-            contour = self.d["vtkContourFilter"]()
+        if self.mode_box.currentText() == "isosurface":
+            contour = vtk.vtkContourFilter()
             contour.SetInputData(image)
             contour.SetValue(0, 0.5 * (vmin + vmax))
-            mapper = self.d["vtkDataSetMapper"]()
+            mapper = vtk.vtkDataSetMapper()
             mapper.SetInputConnection(contour.GetOutputPort())
-            actor = self.d["vtkActor"]()
+            actor = vtk.vtkActor()
             actor.SetMapper(mapper)
             self.renderer.AddActor(actor)
-            pipeline = contour
-            contour_state = contour
-            color_state = None
-            opacity_state = None
+            state = dict(contour=contour, color=None, opacity=None)
         else:
-            mapper = self.d["vtkSmartVolumeMapper"]()
+            mapper = vtk.vtkSmartVolumeMapper()
             mapper.SetInputData(image)
-            color = self.d["vtkColorTransferFunction"]()
-            color.AddRGBPoint(vmin, 0.1, 0.2, 0.8)
-            color.AddRGBPoint(0.5 * (vmin + vmax), 0.9, 0.9, 0.9)
-            color.AddRGBPoint(vmax, 0.8, 0.2, 0.1)
-            opacity = self.d["vtkPiecewiseFunction"]()
-            opacity.AddPoint(vmin, 0.0)
-            opacity.AddPoint(0.5 * (vmin + vmax), 0.08)
-            opacity.AddPoint(vmax, 0.65)
-            prop = self.d["vtkVolumeProperty"]()
+            color = vtk.vtkColorTransferFunction()
+            opacity = vtk.vtkPiecewiseFunction()
+            prop = vtk.vtkVolumeProperty()
             prop.SetColor(color)
             prop.SetScalarOpacity(opacity)
             prop.ShadeOn()
             prop.SetInterpolationTypeToLinear()
-            actor = self.d["vtkVolume"]()
+            actor = vtk.vtkVolume()
             actor.SetMapper(mapper)
             actor.SetProperty(prop)
             self.renderer.AddVolume(actor)
-            pipeline = mapper
-            contour_state = None
-            color_state = color
-            opacity_state = opacity
+            state = dict(contour=None, color=color, opacity=opacity)
 
         self._volume_state = {
-            "spec": spec, "image": image, "actor": actor, "pipeline": pipeline,
-            "contour": contour_state, "color": color_state, "opacity": opacity_state,
-            "range": (vmin, vmax),
+            "spec": spec, "image": image, "actor": actor, "range": (vmin, vmax), **state
         }
+        self._update_field_transfer(self._volume_state, vmin, vmax)
 
     def _polyline_actor(self, points, width=2.0):
-        vtk_points = self.d["vtkPoints"]()
-        polyline = self.d["vtkPolyLine"]()
-        n = len(points)
-        polyline.GetPointIds().SetNumberOfIds(n)
-        for i, point in enumerate(points):
-            vtk_points.InsertNextPoint(*map(float, point))
-            polyline.GetPointIds().SetId(i, i)
-        cells = self.d["vtkCellArray"]()
-        if n >= 2:
-            cells.InsertNextCell(polyline)
-        data = self.d["vtkPolyData"]()
+        vtk_points = vtk.vtkPoints()
+        cells = vtk.vtkCellArray()
+        data = vtk.vtkPolyData()
+        if len(points) >= 2:
+            line = vtk.vtkPolyLine()
+            line.GetPointIds().SetNumberOfIds(len(points))
+            for i, point in enumerate(points):
+                vtk_points.InsertNextPoint(*map(float, point))
+                line.GetPointIds().SetId(i, i)
+            cells.InsertNextCell(line)
+        elif len(points) == 1:
+            vtk_points.InsertNextPoint(*map(float, points[0]))
         data.SetPoints(vtk_points)
         data.SetLines(cells)
-        mapper = self.d["vtkPolyDataMapper"]()
+        mapper = vtk.vtkPolyDataMapper()
         mapper.SetInputData(data)
-        actor = self.d["vtkActor"]()
+        actor = vtk.vtkActor()
         actor.SetMapper(mapper)
         actor.GetProperty().SetLineWidth(width)
         return actor, data
@@ -568,51 +607,47 @@ class TensorToolkitVTKGUI:
         spans = np.ptp(self.trajectory.positions.reshape(-1, 3), axis=0)
         radius = max(float(np.max(spans)) * 0.01, 1e-6)
         for name in self.trajectory.body_names:
-            sphere = self.d["vtkSphereSource"]()
+            sphere = vtk.vtkSphereSource()
             sphere.SetRadius(radius)
             sphere.SetThetaResolution(20)
             sphere.SetPhiResolution(20)
-            mapper = self.d["vtkPolyDataMapper"]()
+            mapper = vtk.vtkPolyDataMapper()
             mapper.SetInputConnection(sphere.GetOutputPort())
-            actor = self.d["vtkActor"]()
+            actor = vtk.vtkActor()
             actor.SetMapper(mapper)
             self.renderer.AddActor(actor)
             self._body_actors[name] = actor
-
             trail_actor, trail_data = self._polyline_actor(np.zeros((1, 3)), width=2.0)
             self.renderer.AddActor(trail_actor)
             self._trail_actors[name] = (trail_actor, trail_data)
 
-        event_labels = []
         event_points = trajectory_event_points(self.trajectory)
-        event_radius = radius * 0.65
+        self.event_box.clear()
         for i, event in enumerate(self.trajectory.events):
-            event_labels.append(f"{i}: {event.kind} @ {event.time:.6g}")
-            sphere = self.d["vtkSphereSource"]()
-            sphere.SetRadius(event_radius)
+            self.event_box.addItem(f"{i}: {event.kind} @ {event.time:.6g}")
+            sphere = vtk.vtkSphereSource()
+            sphere.SetRadius(radius * 0.65)
             sphere.SetThetaResolution(12)
             sphere.SetPhiResolution(12)
-            mapper = self.d["vtkPolyDataMapper"]()
+            mapper = vtk.vtkPolyDataMapper()
             mapper.SetInputConnection(sphere.GetOutputPort())
-            actor = self.d["vtkActor"]()
+            actor = vtk.vtkActor()
             actor.SetMapper(mapper)
             if i < len(event_points.points):
                 actor.SetPosition(*map(float, event_points.points[i]))
             self.renderer.AddActor(actor)
             self._event_actors.append(actor)
-        self.event_box.configure(values=event_labels)
-        if event_labels:
-            self.event_var.set(event_labels[0])
 
-        self.follow_box.configure(values=("World", *self.trajectory.body_names))
-        if self.follow_var.get() not in ("World", *self.trajectory.body_names):
-            self.follow_var.set("World")
+        self.follow_box.blockSignals(True)
+        self.follow_box.clear()
+        self.follow_box.addItems(("World", *self.trajectory.body_names))
+        self.follow_box.blockSignals(False)
 
     def _update_polydata_line(self, polydata, points):
-        vtk_points = self.d["vtkPoints"]()
-        cells = self.d["vtkCellArray"]()
+        vtk_points = vtk.vtkPoints()
+        cells = vtk.vtkCellArray()
         if len(points) >= 2:
-            line = self.d["vtkPolyLine"]()
+            line = vtk.vtkPolyLine()
             line.GetPointIds().SetNumberOfIds(len(points))
             for i, point in enumerate(points):
                 vtk_points.InsertNextPoint(*map(float, point))
@@ -629,20 +664,17 @@ class TensorToolkitVTKGUI:
             return
         t = float(np.clip(self.timeline.current, self.trajectory.times[0], self.trajectory.times[-1]))
         positions = sample_trajectory_positions(self.trajectory, t)
-        try:
-            duration = float(self.trail_var.get())
-        except (TypeError, ValueError, self.tk.TclError):
-            duration = 0.0
+        duration = self.trail_spin.value()
         for i, name in enumerate(self.trajectory.body_names):
             self._body_actors[name].SetPosition(*map(float, positions[i]))
             trail = trajectory_trail(self.trajectory, name, t, duration=duration)
-            actor, data = self._trail_actors[name]
+            _actor, data = self._trail_actors[name]
             self._update_polydata_line(data, trail)
 
     def _update_follow_camera(self):
-        if self.trajectory is None or self.follow_var.get() == "World":
+        if self.trajectory is None or self.follow_box.currentText() == "World":
             return
-        name = self.follow_var.get()
+        name = self.follow_box.currentText()
         if name not in self.trajectory.body_names:
             return
         idx = self.trajectory.body_names.index(name)
@@ -658,15 +690,14 @@ class TensorToolkitVTKGUI:
     def _jump_event(self):
         if self.trajectory is None or not self.trajectory.events:
             return
-        try:
-            index = int(self.event_var.get().split(":", 1)[0])
-            event = self.trajectory.events[index]
-        except Exception:
+        index = self.event_box.currentIndex()
+        if index < 0:
             return
+        event = self.trajectory.events[index]
         self.timeline.pause()
-        self.play_text_var.set("▶ Play")
+        self.play_button.setText("▶ Play")
         self.timeline.seek(event.time)
-        self.timeline_var.set(self.timeline.current)
+        self._set_slider_from_time(self.timeline.current)
         self._render_time_state()
 
     def _update_time_text(self, frame_index=None):
@@ -674,9 +705,9 @@ class TensorToolkitVTKGUI:
         if frame_index is not None and self.result is not None:
             frame_time = float(self.result.axis_values[0][frame_index])
             text += f"   tensor frame {frame_index} @ {frame_time:.6g}"
-        self.timeline_text_var.set(text)
+        self.time_label.setText(text)
 
-    def _render_time_state(self, force_field_rebuild=False):
+    def _render_time_state(self, *_args, force_field_rebuild=False):
         frame_index = self._tensor_frame_index()
         if frame_index is not None:
             try:
@@ -684,23 +715,27 @@ class TensorToolkitVTKGUI:
                 self._ensure_field_actor(volume, force=force_field_rebuild)
                 self._prefetch_nearby(frame_index)
             except Exception as exc:
-                self.status_var.set(str(exc))
+                self.status_label.setText(str(exc))
         self._update_trajectory_scene()
         self._update_follow_camera()
         self._update_time_text(frame_index)
-
         if not self._camera_initialized and (self.result is not None or self.trajectory is not None):
             self.renderer.ResetCamera()
             self._camera_initialized = True
-        self.interactor.GetRenderWindow().Render()
+        self.vtk_widget.GetRenderWindow().Render()
+
+    def closeEvent(self, event):
+        try:
+            self.vtk_widget.Finalize()
+        finally:
+            super().closeEvent(event)
 
 
 def main() -> int:
-    d = _dependencies()
-    root = d["tk"].Tk()
-    TensorToolkitVTKGUI(root)
-    root.mainloop()
-    return 0
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    window = TensorToolkitVTKGUI()
+    window.show()
+    return app.exec()
 
 
 __all__ = ["TensorToolkitVTKGUI", "main"]
