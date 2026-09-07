@@ -75,3 +75,22 @@ Large disk-backed results should continue to be sliced at a selected time before
 
 A visually smooth or symmetric VTK scene is not evidence that the underlying metric or physical model is correct. The GUI exposes stored validation status for that reason. Tensor Toolkit still treats validation and convergence testing as upstream requirements, with visualization used only to help a human inspect the computed geometry and observables.
 \n\n## Desktop embedding\n\nThe active visualizer uses `vtkmodules.qt.QVTKRenderWindowInteractor` rather than VTK's Tk widget. This avoids the native `vtkRenderingTk` library dependency that is not reliably present in Windows Python wheels. The visualization extra installs PySide6 alongside VTK.\n
+
+## Independent tensor time sampling
+
+The VTK experiment controls now separate the time axis from the spatial grid. `Time samples Nt`, `Time start`, and `Time stop` construct the experiment's first axis independently, while `Spatial samples Nx=Ny=Nz` and `Spatial extent` apply only to x/y/z.
+
+This lets the GUI request many more authoritative tensor frames across an arbitrary coordinate-time interval without forcing the same high resolution on all three spatial axes. The solver still receives an ordinary four-axis `Experiment`; no physics implementation is bypassed or modified.
+
+## Field appearance controls
+
+The renderer exposes presentation-only controls for color and transparency:
+
+- Blue–White–Red, Grayscale, Viridis, and Plasma color maps.
+- Automatic scalar range or a range symmetric about zero.
+- Maximum opacity.
+- Near-zero opacity.
+- A near-zero cutoff fraction based on the current frame's maximum absolute magnitude.
+- Midpoint or zero isosurface level.
+
+These controls modify only VTK transfer functions and contour levels. They do not alter stored tensor values, validation data, or simulation results.
