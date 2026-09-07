@@ -1,7 +1,7 @@
 """Compatibility entry point and helpers for the Tensor Toolkit visualizer."""
 from __future__ import annotations
 
-from tensor_toolkit.gui import GUI_OUTPUTS, TensorToolkitGUI, _gui_dependencies
+from tensor_toolkit.gui import GUI_OUTPUTS, TensorToolkitGUI
 
 
 def selected_output_names(flags: dict[str, bool]) -> frozenset[str]:
@@ -46,16 +46,13 @@ def format_memory_plan(plan: dict[str, object]) -> str:
 
 
 class TensorToolkitOverviewGUI(TensorToolkitGUI):
-    """Backward-compatible name for the unified Tensor Toolkit GUI."""
+    """Legacy 2-D GUI retained for compatibility and regression testing."""
 
 
 def main() -> int:
-    """Launch the unified Tensor Toolkit desktop visualizer."""
-    tk, _ttk, _filedialog, _messagebox, _Figure, _Canvas = _gui_dependencies()
-    root = tk.Tk()
-    TensorToolkitOverviewGUI(root)
-    root.mainloop()
-    return 0
+    """Launch the VTK-based Tensor Toolkit desktop visualizer."""
+    from tensor_toolkit.vtk_gui import main as vtk_main
+    return vtk_main()
 
 
 if __name__ == "__main__":  # pragma: no cover

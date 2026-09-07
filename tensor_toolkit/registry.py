@@ -37,20 +37,40 @@ def configure_grid(
     *,
     points: int | None = None,
     extent: float | None = None,
+    time_points: int | None = None,
+    time_start: float | None = None,
+    time_stop: float | None = None,
 ) -> Experiment:
-    """Return an experiment with a uniform four-axis grid override."""
+    """Return an experiment with independent time and spatial grid overrides.
+
+    points and extent apply to the three spatial axes. For backwards
+    compatibility, when no explicit time override is supplied, they continue
+    to apply to all four axes as before.
+    """
     if points is not None and points < 3:
         raise ValueError("--points must be at least 3")
     if extent is not None and extent <= 0:
         raise ValueError("--extent must be positive")
+    if time_points is not None and time_points < 3:
+        raise ValueError("time_points must be at least 3")
+    if (time_start is None) ^ (time_stop is None):
+        raise ValueError("time_start and time_stop must be provided together")
+    if time_start is not None and float(time_stop) <= float(time_start):
+        raise ValueError("time_stop must be greater than time_start")
 
+    explicit_time = time_points is not None or time_start is not None
     axes = []
-    for axis in experiment.axes:
-        axis_points = axis.points if points is None else int(points)
-        if extent is None:
-            start, stop = axis.start, axis.stop
+    for index, axis in enumerate(experiment.axes):
+        if index == 0 and explicit_time:
+            axis_points = axis.points if time_points is None else int(time_points)
+            start = axis.start if time_start is None else float(time_start)
+            stop = axis.stop if time_stop is None else float(time_stop)
         else:
-            start, stop = -float(extent), float(extent)
+            axis_points = axis.points if points is None else int(points)
+            if extent is None:
+                start, stop = axis.start, axis.stop
+            else:
+                start, stop = -float(extent), float(extent)
         axes.append(Axis(start, stop, axis_points))
     return replace(experiment, axes=tuple(axes))
 

@@ -530,7 +530,7 @@ def _interactive() -> int:
 
 def _visualize() -> int:
     try:
-        from tensor_toolkit.gui import main as gui_main
+        from tensor_toolkit.vtk_gui import main as gui_main
         return gui_main()
     except RuntimeError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
