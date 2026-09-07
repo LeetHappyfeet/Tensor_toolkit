@@ -126,13 +126,33 @@ class TensorToolkitVTKGUI(QtWidgets.QMainWindow):
         self.points_spin = QtWidgets.QSpinBox()
         self.points_spin.setRange(3, 257)
         self.points_spin.setValue(9)
-        exp_layout.addRow("Points / axis", self.points_spin)
+        self.points_spin.setToolTip("Spatial samples on each of x, y, and z.")
+        exp_layout.addRow("Spatial samples Nx=Ny=Nz", self.points_spin)
 
         self.extent_spin = QtWidgets.QDoubleSpinBox()
         self.extent_spin.setRange(1e-12, 1e12)
         self.extent_spin.setDecimals(6)
         self.extent_spin.setValue(2.0)
-        exp_layout.addRow("Extent ±", self.extent_spin)
+        self.extent_spin.setToolTip("Spatial domain is [-extent,+extent] for x, y, and z.")
+        exp_layout.addRow("Spatial extent ±", self.extent_spin)
+
+        self.nt_spin = QtWidgets.QSpinBox()
+        self.nt_spin.setRange(3, 100000)
+        self.nt_spin.setValue(21)
+        self.nt_spin.setToolTip("Number of authoritative tensor frames calculated along the time axis.")
+        exp_layout.addRow("Time samples Nt", self.nt_spin)
+
+        self.time_start_spin = QtWidgets.QDoubleSpinBox()
+        self.time_start_spin.setRange(-1e15, 1e15)
+        self.time_start_spin.setDecimals(9)
+        self.time_start_spin.setValue(-2.0)
+        exp_layout.addRow("Time start", self.time_start_spin)
+
+        self.time_stop_spin = QtWidgets.QDoubleSpinBox()
+        self.time_stop_spin.setRange(-1e15, 1e15)
+        self.time_stop_spin.setDecimals(9)
+        self.time_stop_spin.setValue(2.0)
+        exp_layout.addRow("Time stop", self.time_stop_spin)
         layout.addWidget(exp_group)
 
         output_group = QtWidgets.QGroupBox("Retained fields")
@@ -184,6 +204,53 @@ class TensorToolkitVTKGUI(QtWidgets.QMainWindow):
         self.mode_box.currentTextChanged.connect(self._field_changed)
         field_layout.addRow("Mode", self.mode_box)
         layout.addWidget(field_group)
+
+        appearance_group = QtWidgets.QGroupBox("Field color / transparency")
+        appearance_layout = QtWidgets.QFormLayout(appearance_group)
+
+        self.color_map_box = QtWidgets.QComboBox()
+        self.color_map_box.addItems(("Blue–White–Red", "Grayscale", "Viridis", "Plasma"))
+        self.color_map_box.currentTextChanged.connect(self._appearance_changed)
+        appearance_layout.addRow("Color map", self.color_map_box)
+
+        self.range_mode_box = QtWidgets.QComboBox()
+        self.range_mode_box.addItems(("Auto range", "Symmetric about zero"))
+        self.range_mode_box.currentTextChanged.connect(self._appearance_changed)
+        appearance_layout.addRow("Scalar range", self.range_mode_box)
+
+        self.max_opacity_spin = QtWidgets.QDoubleSpinBox()
+        self.max_opacity_spin.setRange(0.0, 1.0)
+        self.max_opacity_spin.setSingleStep(0.05)
+        self.max_opacity_spin.setDecimals(2)
+        self.max_opacity_spin.setValue(0.65)
+        self.max_opacity_spin.valueChanged.connect(self._appearance_changed)
+        appearance_layout.addRow("Maximum opacity", self.max_opacity_spin)
+
+        self.zero_opacity_spin = QtWidgets.QDoubleSpinBox()
+        self.zero_opacity_spin.setRange(0.0, 1.0)
+        self.zero_opacity_spin.setSingleStep(0.02)
+        self.zero_opacity_spin.setDecimals(2)
+        self.zero_opacity_spin.setValue(0.0)
+        self.zero_opacity_spin.valueChanged.connect(self._appearance_changed)
+        appearance_layout.addRow("Near-zero opacity", self.zero_opacity_spin)
+
+        self.zero_cutoff_spin = QtWidgets.QDoubleSpinBox()
+        self.zero_cutoff_spin.setRange(0.0, 1.0)
+        self.zero_cutoff_spin.setSingleStep(0.01)
+        self.zero_cutoff_spin.setDecimals(3)
+        self.zero_cutoff_spin.setValue(0.02)
+        self.zero_cutoff_spin.setToolTip(
+            "Fraction of max absolute scalar magnitude treated as the near-zero transparent band."
+        )
+        self.zero_cutoff_spin.valueChanged.connect(self._appearance_changed)
+        appearance_layout.addRow("Near-zero cutoff fraction", self.zero_cutoff_spin)
+
+        self.iso_level_box = QtWidgets.QComboBox()
+        self.iso_level_box.addItems(("Midpoint", "Zero"))
+        self.iso_level_box.currentTextChanged.connect(self._appearance_changed)
+        appearance_layout.addRow("Isosurface level", self.iso_level_box)
+
+        layout.addWidget(appearance_group)
 
         time_group = QtWidgets.QGroupBox("Visualization timeline")
         time_layout = QtWidgets.QGridLayout(time_group)
@@ -322,7 +389,12 @@ class TensorToolkitVTKGUI(QtWidgets.QMainWindow):
             experiment, {name: edit.value() for name, edit in self._parameter_edits.items()}
         )
         experiment = configure_grid(
-            experiment, points=self.points_spin.value(), extent=self.extent_spin.value()
+            experiment,
+            points=self.points_spin.value(),
+            extent=self.extent_spin.value(),
+            time_points=self.nt_spin.value(),
+            time_start=self.time_start_spin.value(),
+            time_stop=self.time_stop_spin.value(),
         )
         return replace(experiment, outputs=self._selected_outputs())
 
@@ -578,30 +650,76 @@ class TensorToolkitVTKGUI(QtWidgets.QMainWindow):
         image.GetPointData().Modified()
         image.Modified()
 
+    def _appearance_changed(self, *_):
+        if self.result is None:
+            return
+        self._render_time_state()
+
     def _volume_range(self, volume):
         finite = volume.values[np.isfinite(volume.values)]
         if finite.size == 0:
             raise ValueError("selected volume contains no finite values")
         vmin, vmax = float(np.min(finite)), float(np.max(finite))
-        if np.isclose(vmin, vmax):
+        if self.range_mode_box.currentText() == "Symmetric about zero":
+            bound = max(abs(vmin), abs(vmax))
+            if bound == 0.0:
+                bound = 1e-12
+            vmin, vmax = -bound, bound
+        elif np.isclose(vmin, vmax):
             vmax = vmin + max(1.0, abs(vmin)) * 1e-12
         return vmin, vmax
+
+    def _color_points(self, vmin, vmax):
+        middle = 0.5 * (vmin + vmax)
+        name = self.color_map_box.currentText()
+        if name == "Grayscale":
+            return ((vmin, (0.05, 0.05, 0.05)), (vmax, (0.95, 0.95, 0.95)))
+        if name == "Viridis":
+            return (
+                (vmin, (0.267, 0.005, 0.329)),
+                (middle, (0.128, 0.567, 0.551)),
+                (vmax, (0.993, 0.906, 0.144)),
+            )
+        if name == "Plasma":
+            return (
+                (vmin, (0.050, 0.030, 0.528)),
+                (middle, (0.798, 0.280, 0.470)),
+                (vmax, (0.940, 0.975, 0.131)),
+            )
+        return (
+            (vmin, (0.1, 0.2, 0.8)),
+            (middle, (0.9, 0.9, 0.9)),
+            (vmax, (0.8, 0.2, 0.1)),
+        )
 
     def _update_field_transfer(self, state, vmin, vmax):
         middle = 0.5 * (vmin + vmax)
         if state.get("contour") is not None:
-            state["contour"].SetValue(0, middle)
+            level = 0.0 if self.iso_level_box.currentText() == "Zero" else middle
+            level = float(np.clip(level, vmin, vmax))
+            state["contour"].SetValue(0, level)
             state["contour"].Modified()
         color, opacity = state.get("color"), state.get("opacity")
         if color is not None and opacity is not None:
             color.RemoveAllPoints()
-            color.AddRGBPoint(vmin, 0.1, 0.2, 0.8)
-            color.AddRGBPoint(middle, 0.9, 0.9, 0.9)
-            color.AddRGBPoint(vmax, 0.8, 0.2, 0.1)
+            for scalar, rgb in self._color_points(vmin, vmax):
+                color.AddRGBPoint(float(scalar), *rgb)
+
             opacity.RemoveAllPoints()
-            opacity.AddPoint(vmin, 0.0)
-            opacity.AddPoint(middle, 0.08)
-            opacity.AddPoint(vmax, 0.65)
+            max_opacity = self.max_opacity_spin.value()
+            zero_opacity = self.zero_opacity_spin.value()
+            max_abs = max(abs(vmin), abs(vmax), 1e-30)
+            cutoff = self.zero_cutoff_spin.value() * max_abs
+
+            points = []
+            if vmin < 0.0 < vmax:
+                points.extend(((vmin, max_opacity), (-cutoff, zero_opacity),
+                               (cutoff, zero_opacity), (vmax, max_opacity)))
+            else:
+                low, high = (vmin, vmax) if abs(vmin) <= abs(vmax) else (vmax, vmin)
+                points.extend(((low, zero_opacity), (high, max_opacity)))
+            for scalar, alpha in sorted(points, key=lambda item: item[0]):
+                opacity.AddPoint(float(np.clip(scalar, vmin, vmax)), float(alpha))
             color.Modified()
             opacity.Modified()
         state["range"] = (vmin, vmax)
