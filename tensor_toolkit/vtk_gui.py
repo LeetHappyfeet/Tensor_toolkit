@@ -286,6 +286,17 @@ class TensorToolkitVTKGUI(QtWidgets.QMainWindow):
         self.interactor.SetInteractorStyle(vtk.vtkInteractorStyleTrackballCamera())
         self.interactor.Initialize()
 
+        axes = vtk.vtkAxesActor()
+        axes.SetXAxisLabelText("X")
+        axes.SetYAxisLabelText("Y")
+        axes.SetZAxisLabelText("Z")
+        self.orientation_marker = vtk.vtkOrientationMarkerWidget()
+        self.orientation_marker.SetOrientationMarker(axes)
+        self.orientation_marker.SetInteractor(self.interactor)
+        self.orientation_marker.SetViewport(0.0, 0.0, 0.16, 0.16)
+        self.orientation_marker.SetEnabled(1)
+        self.orientation_marker.InteractiveOff()
+
     def _metric_changed(self, *_):
         while self.parameter_layout.rowCount():
             self.parameter_layout.removeRow(0)
