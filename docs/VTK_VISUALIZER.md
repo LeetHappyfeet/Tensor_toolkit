@@ -1,6 +1,6 @@
 # VTK Visualizer
 
-Tensor Toolkit's primary desktop visualization path now uses VTK for 3-D rendering. The renderer is intentionally the final stage of the scientific pipeline: it displays already-computed NumPy data and does not implement metric, curvature, dynamics, observer, or ray-tracing physics.
+Tensor Toolkit's primary desktop visualization path now uses Qt (PySide6) for the desktop shell and VTK for 3-D rendering. The renderer is intentionally the final stage of the scientific pipeline: it displays already-computed NumPy data and does not implement metric, curvature, dynamics, observer, or ray-tracing physics.
 
 ## Installation and launch
 
@@ -74,3 +74,4 @@ Large disk-backed results should continue to be sliced at a selected time before
 ## Scientific caution
 
 A visually smooth or symmetric VTK scene is not evidence that the underlying metric or physical model is correct. The GUI exposes stored validation status for that reason. Tensor Toolkit still treats validation and convergence testing as upstream requirements, with visualization used only to help a human inspect the computed geometry and observables.
+\n\n## Desktop embedding\n\nThe active visualizer uses `vtkmodules.qt.QVTKRenderWindowInteractor` rather than VTK's Tk widget. This avoids the native `vtkRenderingTk` library dependency that is not reliably present in Windows Python wheels. The visualization extra installs PySide6 alongside VTK.\n
