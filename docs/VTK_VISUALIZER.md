@@ -94,3 +94,8 @@ The renderer exposes presentation-only controls for color and transparency:
 - Midpoint or zero isosurface level.
 
 These controls modify only VTK transfer functions and contour levels. They do not alter stored tensor values, validation data, or simulation results.
+
+
+## Alcubierre wall study boundary
+
+The headless `tensor_toolkit.alcubierre_study` module defines `SIGMA_PRESETS`, `wall_resolution(metric, spatial_axes)`, and `sigma_sweep(experiment, values)`. The diagnostic measures the 10–90% radial transition directly from the existing shape function, reports cells across the wall using the coarsest spatial grid spacing, and classifies <4 cells as under-resolved, 4–8 as marginal, and >=8 as resolved (heuristic only, not a convergence guarantee). The Qt metric panel provides presets and displays this diagnostic; VTK does not compute it. The sweep generator runs independent authoritative experiments, and does not interpolate or modify physics results. A dedicated GUI sweep-result browser remains future work.
