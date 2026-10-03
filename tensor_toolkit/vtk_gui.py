@@ -13,6 +13,8 @@ import threading
 import numpy as np
 
 from tensor_toolkit.experiment import ExperimentResult, run_experiment
+from tensor_toolkit.alcubierre_study import SIGMA_PRESETS, wall_resolution
+from tensor_toolkit.metrics import AlcubierreMetric
 from tensor_toolkit.io import load_result, save_result
 from tensor_toolkit.registry import builtins, configure_grid, get_experiment
 from tensor_toolkit.visualization import editable_metric_parameters, replace_metric_parameters
@@ -122,6 +124,13 @@ class TensorToolkitVTKGUI(QtWidgets.QMainWindow):
         self.parameter_group = QtWidgets.QGroupBox("Metric parameters")
         self.parameter_layout = QtWidgets.QFormLayout(self.parameter_group)
         exp_layout.addRow(self.parameter_group)
+        self.sigma_preset = QtWidgets.QComboBox()
+        self.sigma_preset.addItems(('Custom', *SIGMA_PRESETS))
+        self.sigma_preset.currentTextChanged.connect(self._apply_sigma_preset)
+        exp_layout.addRow('Wall profile preset', self.sigma_preset)
+        self.wall_label = QtWidgets.QLabel('')
+        self.wall_label.setWordWrap(True)
+        exp_layout.addRow('Wall resolution estimate', self.wall_label)
 
         self.points_spin = QtWidgets.QSpinBox()
         self.points_spin.setRange(3, 257)
@@ -376,6 +385,26 @@ class TensorToolkitVTKGUI(QtWidgets.QMainWindow):
             edit.setValue(float(value))
             self.parameter_layout.addRow(name, edit)
             self._parameter_edits[name] = edit
+            if name == 'sigma':
+                edit.setToolTip('Sigma controls wall sharpness. Re-run experiment to calculate new fields.')
+                edit.valueChanged.connect(self._refresh_wall_diagnostic)
+        self.sigma_preset.setEnabled('sigma' in self._parameter_edits)
+        self._refresh_wall_diagnostic()
+
+    def _apply_sigma_preset(self, name):
+        if name in SIGMA_PRESETS and 'sigma' in self._parameter_edits:
+            self._parameter_edits['sigma'].setValue(SIGMA_PRESETS[name])
+
+    def _refresh_wall_diagnostic(self, *_):
+        try:
+            experiment = self._build_experiment()
+            if not isinstance(experiment.metric, AlcubierreMetric):
+                self.wall_label.setText('Not applicable')
+                return
+            d = wall_resolution(experiment.metric, experiment.axes[1:])
+            self.wall_label.setText(f'10–90% width {d.width_10_90:.4g}; {d.cells_across_wall:.2f} cells across wall ({d.status}). Heuristic, not a convergence test.')
+        except Exception as exc:
+            self.wall_label.setText(str(exc))
 
     def _selected_outputs(self):
         outputs = frozenset(name for name, box in self.output_checks.items() if box.isChecked())
