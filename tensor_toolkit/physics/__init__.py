@@ -18,11 +18,28 @@ from .diagnostics import (
     test_particle_diagnostics,
 )
 from .demos import demo_flyby_experiment, simulation_demos
+from .dynamics import (
+    CompositeDynamics,
+    ConstantThrust,
+    CentralBody1PN,
+    DynamicsModel,
+    NewtonianGravity,
+)
+from .events import (
+    CollisionDetector,
+    DistanceCrossingDetector,
+    EventDetector,
+    SimulationEvent,
+)
 from .experiments import (
     SimulationExperiment,
     SimulationExperimentResult,
     run_simulation_experiment,
     save_simulation_experiment_result,
+)
+from .properties import (
+    PhysicalProperties, RotationProperties, MaterialProperties,
+    ElectromagneticProperties, PropulsionProperties,
 )
 from .gravity import newtonian_gravity_accelerations
 from .integrators import simulate
@@ -32,13 +49,28 @@ from .relativity import (
     sample_schwarzschild_trajectory,
     save_schwarzschild_trajectory_samples,
 )
-from .state import Body, System
+from .state import Body, System, SystemState
 from .trajectory import Trajectory
+from .worldline import Worldline, trajectory_worldline
 
 __all__ = [
     "Body",
     "System",
+    "SystemState",
     "Trajectory",
+    "Worldline",
+    "trajectory_worldline",
+    "DynamicsModel",
+    "NewtonianGravity",
+    "CentralBody1PN",
+    "PhysicalProperties", "RotationProperties", "MaterialProperties",
+    "ElectromagneticProperties", "PropulsionProperties",
+    "ConstantThrust",
+    "CompositeDynamics",
+    "EventDetector",
+    "SimulationEvent",
+    "CollisionDetector",
+    "DistanceCrossingDetector",
     "MetricSamples",
     "TensorEventSamples",
     "ConservationDiagnostics",

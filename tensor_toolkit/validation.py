@@ -28,6 +28,19 @@ def validate_metric(metric: np.ndarray, *, require_float64: bool = True, symmetr
     return g
 
 
+def validate_lorentzian_signature(metric: np.ndarray) -> np.ndarray:
+    """Require exactly one negative and three positive eigenvalues per event.
+
+    Matrix determinant alone is not enough: an invalid (3,1) signature
+    also has negative determinant. The tensor convention is (-,+,+,+).
+    """
+    g = validate_metric(metric)
+    eig = np.linalg.eigvalsh(np.moveaxis(g, (0, 1), (-2, -1)))
+    if np.any(np.sum(eig < 0, axis=-1) != 1) or np.any(np.sum(eig > 0, axis=-1) != 3):
+        raise ValueError("metric must have Lorentzian signature (-,+,+,+) throughout the grid")
+    return g
+
+
 def validate_spacings(spacings, grid_shape) -> tuple[float, ...]:
     spacings = tuple(float(x) for x in spacings)
     grid_shape = tuple(grid_shape)
@@ -40,4 +53,4 @@ def validate_spacings(spacings, grid_shape) -> tuple[float, ...]:
     return spacings
 
 
-__all__ = ["validate_metric", "validate_spacings"]
+__all__ = ["validate_metric", "validate_lorentzian_signature", "validate_spacings"]

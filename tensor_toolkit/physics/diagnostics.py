@@ -228,6 +228,8 @@ def test_particle_diagnostics(
     )
 
 
+
+# Public scientific API name begins with 'test_' for domain terminology.\n# Prevent pytest from collecting it when imported into a test module.\ntest_particle_diagnostics.__test__ = False\n
 def encounter_diagnostics(
     trajectory: Trajectory,
     *,

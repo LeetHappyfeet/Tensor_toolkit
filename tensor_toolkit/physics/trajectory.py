@@ -1,17 +1,23 @@
 """Trajectory results and interpolation utilities."""
 
 from __future__ import annotations
-from dataclasses import dataclass
+
+from dataclasses import dataclass, field
 import numpy as np
+
+from .events import SimulationEvent
+
 
 @dataclass(frozen=True)
 class Trajectory:
-    """Time history for one or more classical bodies."""
+    """Time history for one or more classically integrated bodies."""
+
     times: np.ndarray
     positions: np.ndarray
     velocities: np.ndarray
     accelerations: np.ndarray
     body_names: tuple[str, ...]
+    events: tuple[SimulationEvent, ...] = field(default_factory=tuple)
 
     def __post_init__(self) -> None:
         times = np.asarray(self.times, dtype=np.float64)
@@ -23,13 +29,18 @@ class Trajectory:
         if np.any(np.diff(times) <= 0.0):
             raise ValueError("trajectory times must be strictly increasing")
         expected = (times.size, len(self.body_names), 3)
-        for name, value in (("positions", positions), ("velocities", velocities), ("accelerations", accelerations)):
+        for name, value in (
+            ("positions", positions),
+            ("velocities", velocities),
+            ("accelerations", accelerations),
+        ):
             if value.shape != expected:
                 raise ValueError(f"{name} must have shape {expected}, got {value.shape}")
         object.__setattr__(self, "times", times)
         object.__setattr__(self, "positions", positions)
         object.__setattr__(self, "velocities", velocities)
         object.__setattr__(self, "accelerations", accelerations)
+        object.__setattr__(self, "events", tuple(self.events))
 
     def body_index(self, body: str | int) -> int:
         if isinstance(body, str):
@@ -42,7 +53,11 @@ class Trajectory:
             raise IndexError("body index out of range")
         return index
 
-    def sample(self, times, body: str | int = 0) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    def sample(
+        self,
+        times,
+        body: str | int = 0,
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """Linearly interpolate position, velocity, and acceleration at arbitrary times."""
         query = np.asarray(times, dtype=np.float64)
         if query.ndim == 0:
@@ -52,6 +67,16 @@ class Trajectory:
         index = self.body_index(body)
 
         def interpolate(values: np.ndarray) -> np.ndarray:
-            return np.stack([np.interp(query, self.times, values[:, index, axis]) for axis in range(3)], axis=-1)
+            return np.stack(
+                [
+                    np.interp(query, self.times, values[:, index, axis])
+                    for axis in range(3)
+                ],
+                axis=-1,
+            )
 
-        return interpolate(self.positions), interpolate(self.velocities), interpolate(self.accelerations)
+        return (
+            interpolate(self.positions),
+            interpolate(self.velocities),
+            interpolate(self.accelerations),
+        )

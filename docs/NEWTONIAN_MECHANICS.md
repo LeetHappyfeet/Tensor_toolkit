@@ -1,33 +1,82 @@
 # Newtonian mechanics and trajectory bridge
 
-Tensor Toolkit now includes a small classical point-mass dynamics layer under
-`tensor_toolkit.physics`. Its purpose is to generate physically meaningful
-trajectories that can be sampled by the existing metric and GR tensor pipeline.
+Tensor Toolkit includes a classical point-mass dynamics layer under `tensor_toolkit.physics`. Its purpose is to generate physically meaningful trajectories that can be validated independently and then converted into shared worldlines for relativistic sampling and analysis.
 
-## Scope of the first implementation
+## Architecture
 
-The initial supported model is intentionally narrow:
+The classical path is:
 
-- Cartesian point masses.
-- Newtonian N-body gravity.
-- Fixed-step fourth-order Runge-Kutta integration.
-- Symplectic velocity-Verlet integration for long orbital runs.
-- Conservation diagnostics for energy, linear momentum, and angular momentum.
-- Reusable circular-orbit and hyperbolic-flyby initial-condition helpers.
-- Arbitrary-time interpolation along a simulated trajectory.
-- Direct metric evaluation at trajectory events.
-- Local 4-D tensor stencils centered on trajectory events.
+```text
+Body/System
+   |
+   v
+DynamicsModel
+   |
+   v
+simulate()
+   |
+   v
+Trajectory
+   |
+   +--> diagnostics/events
+   |
+   +--> Worldline
+            |
+            +--> metric sampling
+            +--> local GR tensor sampling
+            +--> Schwarzschild analysis
+            +--> Phase 4 relativistic analysis
+```
 
-Classical body states use SI units by default: metres, seconds, kilograms, and
-metres per second. Some Tensor Toolkit metrics use geometrized coordinates.
-The bridge therefore accepts an optional `coordinate_transform` so unit and
-coordinate conversion is explicit rather than implicit.
+See [SIMULATION_ARCHITECTURE.md](SIMULATION_ARCHITECTURE.md) for the generalized dynamics and state model.
 
-## Basic orbit simulation
+## Units
+
+Classical body states use SI units by default:
+
+- position: metres,
+- time: seconds,
+- mass: kilograms,
+- velocity: metres per second.
+
+Metric coordinate systems may use different conventions. Coordinate conversion must therefore be explicit.
+
+For example, `SchwarzschildIsotropicMetric` uses `(ct,x,y,z)` with all four coordinates measured in metres, while the Alcubierre metric currently uses geometrized coordinates.
+
+A Newtonian SI trajectory must not be silently inserted into a geometrized metric.
+
+## Bodies and systems
+
+`Body` is the initial-condition/configuration object. Bodies can have positive mass, zero mass for passive test particles, and an optional finite radius.
+
+A zero-mass probe responds to gravity but does not accelerate massive bodies.
+
+`SystemState` is the evolving translational state and stores positions, velocities, and masses.
+
+## Dynamics models
+
+The default model is direct Newtonian N-body gravity.
+
+`simulate()` also accepts an explicit `DynamicsModel`. Current infrastructure includes:
+
+- `NewtonianGravity`,
+- `ConstantThrust`,
+- `CompositeDynamics`.
+
+Dynamics models declare whether acceleration depends on velocity.
+
+The current velocity-Verlet implementation is supported only for velocity-independent acceleration laws. RK4 is the reference path for velocity-dependent models and future post-Newtonian extensions.
+
+## Integrators
+
+Supported fixed-step integrators are:
+
+- fourth-order Runge-Kutta,
+- velocity-Verlet.
+
+Example:
 
 ```python
-import numpy as np
-
 from tensor_toolkit.physics import Body, System, simulate
 
 system = System([
@@ -43,159 +92,97 @@ trajectory = simulate(
 )
 ```
 
-A zero-mass body is supported as a passive test particle: it responds to
-gravity but does not accelerate the massive bodies.
+## Events and finite radii
 
-## Metric sampling
+Event detectors run after accepted integration steps.
 
-```python
-from tensor_toolkit.metrics import MinkowskiMetric
-from tensor_toolkit.physics import sample_metric_along_trajectory
+Current event infrastructure includes finite-radius collision detection and distance-crossing detection. Events are recorded on the returned trajectory.
 
-samples = sample_metric_along_trajectory(
-    MinkowskiMetric(),
-    trajectory,
-    body="probe",
-    times=[0.0, 86400.0, 2 * 86400.0],
-)
-```
-
-Each returned event contains its metric-coordinate `(t, x, y, z)`, classical
-velocity and acceleration, and a 4x4 metric tensor.
-
-## Tensor sampling
-
-Curvature cannot be derived from one isolated metric value because the current
-reference pipeline obtains derivatives numerically. The trajectory bridge
-therefore constructs a local 3x3x3x3 coordinate stencil centered on each event,
-feeds that metric grid into the normal Tensor Toolkit tensor evaluator, and
-keeps the tensor values at the center.
-
-```python
-from tensor_toolkit.physics import sample_tensors_along_trajectory
-
-samples = sample_tensors_along_trajectory(
-    MinkowskiMetric(),
-    trajectory,
-    body="probe",
-    times=[0.0, 86400.0],
-    spacings=(1.0, 1000.0, 1000.0, 1000.0),
-    outputs={"metric", "einstein", "stress_energy"},
-)
-```
-
-The four spacings are in the metric coordinate system and correspond to
-`(dt, dx, dy, dz)`.
-
-## Important unit boundary
-
-A Newtonian SI trajectory must not be fed blindly into a metric defined in
-geometrized units. For metrics such as Alcubierre, callers should provide a
-coordinate transform appropriate to that metric and chosen unit convention.
-This is deliberately explicit because silently mixing SI and geometrized
-coordinates would produce numerically valid but physically meaningless output.
+Collision detection is observational at this stage. It does not automatically merge, bounce, fragment, or stop bodies unless future event-response logic explicitly implements that behavior.
 
 ## Conservation diagnostics
 
-The simulator can now report Newtonian conservation behavior directly:
+For massive systems, Tensor Toolkit reports:
+
+- total-energy relative drift,
+- linear-momentum absolute drift,
+- angular-momentum relative drift.
 
 ```python
 from tensor_toolkit.physics import conservation_diagnostics
 
-diagnostics = conservation_diagnostics(
-    trajectory,
-    system.masses,
-)
-
-print(diagnostics.energy_relative_drift)
-print(diagnostics.momentum_absolute_drift)
-print(diagnostics.angular_momentum_relative_drift)
+diagnostics = conservation_diagnostics(trajectory, system.masses)
 ```
 
-These diagnostics are intended to make integrator and timestep quality visible
-before trajectories are used as inputs to relativistic analysis.
+These diagnostics make integrator and timestep quality visible before a trajectory is used by relativistic analysis.
 
-## Reusable orbit and flyby setups
+## Passive test-particle validation
+
+A zero-mass probe contributes nothing to the total Newtonian system energy or momentum. System conservation values can therefore be exactly zero even when the probe trajectory is inaccurate.
+
+For massive-primary to passive-probe encounters, Tensor Toolkit additionally evaluates probe-specific quantities:
+
+- specific orbital energy,
+- specific angular momentum,
+- relative specific-energy drift,
+- relative specific-angular-momentum drift.
+
+This is the appropriate validation layer for spacecraft/test-particle runs.
+
+## Orbit helpers
+
+Reusable initial-condition helpers include circular orbits and hyperbolic flybys.
 
 ```python
 from tensor_toolkit.physics import circular_orbit_system, hyperbolic_flyby_system
-
-orbit = circular_orbit_system(
-    primary_mass=1.98847e30,
-    radius=1.495978707e11,
-)
-
-flyby = hyperbolic_flyby_system(
-    primary_mass=1.89813e27,
-    initial_distance=5.0e9,
-    impact_parameter=7.0e8,
-    incoming_speed=15_000.0,
-)
 ```
 
-The flyby helper uses the specified finite-distance initial speed. It does not
-silently reinterpret that value as asymptotic velocity at infinity.
+The hyperbolic helper interprets the supplied incoming speed at the specified finite initial distance. It does not silently reinterpret it as asymptotic velocity at infinity.
 
-After integration, encounter diagnostics can report closest approach, periapsis
-relative speed, initial/final relative speed, and the net deflection angle:
+## Encounter diagnostics
 
-```python
-from tensor_toolkit.physics import encounter_diagnostics, simulate
+Pairwise encounter diagnostics can report:
 
-trajectory = simulate(
-    flyby,
-    duration=1.0e6,
-    dt=10.0,
-    method="verlet",
-)
+- closest approach,
+- periapsis relative speed,
+- initial/final relative speed,
+- finite-window velocity-direction change or deflection where appropriate.
 
-encounter = encounter_diagnostics(
-    trajectory,
-    primary="primary",
-    probe="probe",
-)
+Passive test-particle hyperbolic encounters can also be compared with the analytic Newtonian reference orbit:
 
-print(encounter.closest_approach_distance)
-print(encounter.periapsis_relative_speed)
-print(encounter.deflection_angle)
+- eccentricity,
+- asymptotic velocity `v_inf`,
+- analytic periapsis distance,
+- analytic periapsis speed,
+- asymptotic scattering angle,
+- numerical periapsis error,
+- numerical periapsis-speed error.
+
+The finite-window simulated direction change is kept distinct from the asymptotic analytic scattering angle.
+
+## Orbit classification
+
+Passive test-particle motion is classified from specific orbital energy:
+
+```text
+specific energy < 0  -> elliptic / bound
+specific energy ~ 0  -> parabolic
+specific energy > 0  -> hyperbolic / unbound
 ```
 
-## Next steps
-
-The next classical milestone is a CLI-accessible orbit/flyby experiment that
-records closest approach, deflection angle, periapsis speed, conservation
-diagnostics, and trajectory samples. The next relativity milestone is to feed
-those same events into Schwarzschild and later Kerr metric sampling, followed by
-observer-frame proper time and four-velocity calculations.
-
+Bound elliptic diagnostics include eccentricity, semi-major axis, periapsis, apoapsis, and orbital period.
 
 ## Classical simulation CLI
 
-The classical simulation runner is now separate from the GR grid experiment
-runner and is designed around an arbitrary number of bodies:
+The built-in flyby experiment can be run with:
 
 ```bash
 tensor-toolkit simulate demo-flyby
 ```
 
-The built-in flyby demo can save a reusable run directory:
+Optional controls include duration, timestep, integration method, sample interval, and output directory.
 
-```bash
-tensor-toolkit simulate demo-flyby --output results/demo-flyby
-```
-
-Optional overrides are available for integration studies:
-
-```bash
-tensor-toolkit simulate demo-flyby \
-    --duration 700000 \
-    --dt 10 \
-    --method verlet \
-    --sample-every 100 \
-    --output results/demo-flyby-fine
-```
-
-The saved `trajectory.npz` contains arrays with the following layout:
+Saved trajectory data uses:
 
 ```text
 times          (T,)
@@ -205,141 +192,85 @@ accelerations  (T, N, 3)
 body_names     (N,)
 ```
 
-where `N` is the number of moving or passive bodies in the experiment. This
-layout is intentionally not specialized to two-body motion. Future experiments
-can include stars, planets, moons, spacecraft, debris, or other point masses in
-the same integrated system.
+The layout is many-body rather than hard-coded to two-body motion.
 
-`metadata.json` stores system-wide conservation diagnostics and any explicitly
-requested pairwise encounter diagnostics. Pairwise diagnostics are therefore an
-analysis layer over the many-body trajectory rather than a limitation of the
-simulation model.
+## Metric sampling
 
-The current built-in `demo-flyby` is a Jupiter-scale passive-probe encounter.
-Its purpose is to establish a reproducible classical reference trajectory that
-can later be sampled through Schwarzschild, Kerr, and other relativistic metrics.
+A trajectory can be sampled against a metric without recomputing the classical motion.
 
-
-## Passive test-particle validation
-
-A zero-mass probe does not contribute to the system's total Newtonian energy,
-linear momentum, or angular momentum. For that reason, zero-valued system
-conservation diagnostics are not sufficient validation for passive spacecraft.
-
-Tensor Toolkit now computes probe-specific orbital invariants for explicitly
-requested massive-primary -> zero-mass-probe encounters:
-
-```text
-specific orbital energy
-specific angular momentum
-relative specific-energy drift
-relative specific-angular-momentum drift
+```python
+from tensor_toolkit.metrics import MinkowskiMetric
+from tensor_toolkit.physics import sample_metric_along_trajectory
 ```
 
-For unbound encounters, the simulator also derives the analytic Newtonian
-hyperbolic reference orbit from the initial state and reports:
+Returned event samples include metric coordinates, classical velocity/acceleration, and the local 4x4 metric.
 
-```text
-eccentricity
-asymptotic velocity v_inf
-analytic periapsis distance
-analytic periapsis speed
-analytic asymptotic deflection angle
-numerical periapsis error
-numerical periapsis-speed error
-finite-window vs asymptotic deflection difference
-```
+## Local tensor sampling
 
-The finite-window deflection reported from a simulation is intentionally kept
-separate from the analytic asymptotic scattering angle. A finite trajectory may
-begin and end while the probe is still measurably accelerated by the primary,
-so those two angles should not be expected to match exactly.
+Curvature cannot be derived from a single isolated metric value with the current finite-difference reference solver.
 
+`sample_tensors_along_trajectory()` therefore constructs a local four-dimensional stencil around each selected event, evaluates the normal GR pipeline, and retains the center value.
+
+The supplied spacings belong to the metric coordinate system.
+
+## Worldlines
+
+`trajectory_worldline()` converts a selected classical body into the common `Worldline` representation.
+
+The classical worldline uses coordinates `(t,x,y,z)` and can store coordinate acceleration. Coordinate acceleration must not be confused with covariant four-acceleration.
+
+The shared worldline boundary allows later observer, propagation, and visualization code to operate without depending on the original trajectory generator.
 
 ## Schwarzschild relativity bridge
 
-A validated Newtonian trajectory can now be sampled in a static Schwarzschild
-background without changing the classical motion. Tensor Toolkit uses the
-Schwarzschild metric in isotropic Cartesian coordinates so the classical
-Cartesian trajectory can be used directly.
-
-The metric coordinates are:
-
-```text
-(ct, x, y, z)
-```
-
-with all four coordinates measured in metres. The metric components are
-dimensionless. For a selected primary, the sampled body position is expressed
-relative to that primary before metric evaluation.
+A validated Newtonian trajectory can be sampled in a static Schwarzschild background without changing the classical path.
 
 For the built-in flyby:
 
 ```bash
 tensor-toolkit simulate demo-flyby \
-    --schwarzschild jupiter probe \
-    --relativity-samples 5
+  --schwarzschild jupiter probe \
+  --relativity-samples 5
 ```
 
-This reports the isotropic radius, proper-time rate `dτ/dt`, and accumulated
-proper time along the Newtonian trajectory. Proper time is integrated on the
-full Newtonian timestep history, not merely across the displayed GR samples.
+The bridge uses isotropic Cartesian Schwarzschild coordinates:
 
-If the selected pair has an encounter diagnostic, closest approach is
-automatically included in the Schwarzschild sample times even when it does not
-fall on the evenly spaced sample grid.
+```text
+(ct, x, y, z)
+```
 
-The same bridge can invoke the existing finite-difference GR tensor pipeline:
+For the selected pair, positions are measured relative to the chosen primary.
+
+The bridge reports quantities including isotropic radius, proper-time rate `dτ/dt`, accumulated proper time, and a shared worldline/four-velocity representation.
+
+If closest approach is available from encounter diagnostics, it is included in the selected relativity events.
+
+## Local GR fields along the flyby
+
+The Schwarzschild bridge can also invoke the existing finite-difference tensor pipeline:
 
 ```bash
 tensor-toolkit simulate demo-flyby \
-    --schwarzschild jupiter probe \
-    --relativity-samples 5 \
-    --gr-fields metric christoffel ricci einstein \
-    --gr-spacing 1000000 \
-    --output results/demo-flyby-gr
+  --schwarzschild jupiter probe \
+  --relativity-samples 5 \
+  --gr-fields metric christoffel ricci einstein \
+  --gr-spacing 1000000
 ```
 
-`--gr-spacing` is the local stencil spacing in metres for each of
-`(ct, x, y, z)`. Tensor evaluation uses a local 3x3x3x3 spacetime stencil at
-each selected event and then retains the center value.
+The GR spacing sets the local stencil spacing in metres for each of `(ct,x,y,z)`.
 
-When an output directory is provided, the classical files are accompanied by:
+## Physical limitation
 
-```text
-schwarzschild_samples.npz
-schwarzschild_metadata.json
-```
+The Schwarzschild bridge is deliberately one-way.
 
-The Schwarzschild bridge is deliberately one-way at this stage. It evaluates
-relativistic quantities along the already validated Newtonian trajectory; it
-does not yet replace that trajectory with a geodesic solution.
+The Newtonian simulation creates the trajectory; Schwarzschild geometry is then sampled along it. The relativistic field does not yet feed back into the trajectory.
 
-### Current physical limitation
+Schwarzschild also represents one isolated, nonrotating spherical source. Other Newtonian bodies can exist in the classical simulation, but their masses are not combined into an exact many-body relativistic spacetime.
 
-A Schwarzschild spacetime represents a single isolated, non-rotating spherical
-mass. Selecting one body as the primary therefore treats that body as the static
-background source for the GR sampling. Other Newtonian bodies may still exist
-in the classical simulation, but their masses are not yet combined into an
-exact many-body GR spacetime. Extending the dynamics to post-Newtonian and
-eventually numerical-relativity coupling is a later stage.
+## Current development direction
 
+The classical engine now has the state, dynamics, event, diagnostics, trajectory, and worldline interfaces needed for more advanced motion models.
 
-## Orbit classification cleanup
+Likely later additions include validated velocity-dependent post-Newtonian dynamics, rotating/Kerr backgrounds, improved spacecraft force models, and tighter integration with Phase 4 geodesic/observer analysis.
 
-Passive test-particle encounters are now classified from their specific orbital
-energy before the CLI chooses how to describe the motion:
-
-```text
-specific energy < 0  -> elliptic / bound
-specific energy ~ 0  -> parabolic
-specific energy > 0  -> hyperbolic / unbound
-```
-
-For bound elliptic motion, Tensor Toolkit now reports eccentricity, semi-major
-axis, periapsis distance, apoapsis distance, and orbital period.
-
-The angle between the initial and final velocity directions is only labeled
-`finite_deflection` for hyperbolic trajectories. For bound or otherwise
-non-hyperbolic runs it is labeled `velocity_direction_change` so it is not
-mistaken for a scattering angle.
+Self-consistent matter/spacetime evolution remains a numerical-relativity problem rather than an extension of the Newtonian bridge.

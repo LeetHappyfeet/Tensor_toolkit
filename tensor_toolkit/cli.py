@@ -8,6 +8,7 @@ import numpy as np
 
 from tensor_toolkit.backends import require_backend
 from tensor_toolkit.diagnostics import field_diagnostics
+from tensor_toolkit.convergence import compare_nested_results, compare_three_resolutions
 from tensor_toolkit.experiment import SUPPORTED_OUTPUTS, run_experiment
 from tensor_toolkit.io import load_result, save_result
 from tensor_toolkit.physics import (
@@ -108,7 +109,7 @@ def _parser() -> argparse.ArgumentParser:
         help="uniform local GR stencil spacing in metres for ct/x/y/z",
     )
 
-    convergence = sub.add_parser("convergence", help="run a grid-resolution Einstein-symmetry study")
+    convergence = sub.add_parser("convergence", help="compare actual tensor values on nested grids")
     convergence.add_argument("experiment", choices=sorted(builtins()))
     convergence.add_argument("--points", type=int, nargs="+", required=True, help="resolutions to test, e.g. 5 7 9")
     convergence.add_argument("--extent", type=float, default=None, help="fixed uniform domain extent")
@@ -221,6 +222,8 @@ def _run(
         print(f"  {key:14s} shape={value.shape} max|value|={float(abs(value).max()):.6g}")
     _print_memory(result)
     _print_validation(result)
+    for warning in result.metadata.get("resolution", {}).get("warnings", ()):
+        print(f"  RESOLUTION HEURISTIC (not convergence proof): {warning}")
     if output:
         print(f"Saved: {save_result(result, output)}")
     return 0
@@ -276,43 +279,55 @@ def _inspect(path: str, field: str | None = None, center: bool = False) -> int:
     stored = metadata.get("diagnostics", {})
     if stored:
         print(f"Stored validation status: {stored.get('status', 'UNKNOWN')}")
+    for warning in metadata.get("resolution", {}).get("warnings", ()):
+        print(f"Resolution heuristic (not convergence proof): {warning}")
     return 0
 
 
 def _convergence(name, point_counts, extent, backend) -> int:
-    if any(points < 3 for points in point_counts):
-        print("ERROR: all convergence --points values must be at least 3", file=sys.stderr)
+    if len(point_counts) < 2 or any(points < 3 for points in point_counts):
+        print("ERROR: supply at least two --points values >=3", file=sys.stderr)
         return 2
     if len(set(point_counts)) != len(point_counts):
         print("ERROR: convergence --points values must be unique", file=sys.stderr)
         return 2
-
     try:
         require_backend(backend)
         base = replace(get_experiment(name), backend=backend, outputs=frozenset({"einstein"}))
         if extent is not None and extent <= 0:
             raise ValueError("--extent must be positive")
-    except (ValueError, NotImplementedError) as exc:
-        print(f"ERROR: {exc}", file=sys.stderr)
-        return 2
-
-    print(f"Convergence study: {name} (CPU)")
-    print("points  spacing       max|G|        symmetry_abs   symmetry_rel")
-    for points in sorted(point_counts):
-        experiment = configure_grid(base, points=points, extent=extent)
-        try:
+        results = []
+        print(f"Convergence study: {name} (CPU; fixed physical domain)")
+        print("points  spacing       max|G|        symmetry_abs   symmetry_rel")
+        for points in sorted(point_counts):
+            experiment = configure_grid(base, points=points, extent=extent)
             result = run_experiment(experiment)
-        except MemoryError as exc:
-            print(f"{points:6d}  ERROR: {exc}")
-            continue
-        einstein = result.fields["einstein"]
-        symmetry = field_diagnostics(einstein)["symmetry"]
-        spacing = max(result.metadata["spacings"])
-        print(
-            f"{points:6d}  {spacing:11.6g}  {float(np.max(np.abs(einstein))):12.6g}  "
-            f"{symmetry['absolute']:12.6g}  {symmetry['relative']:12.6g}"
-        )
-    return 0
+            results.append(result)
+            einstein = result.fields["einstein"]
+            symmetry = field_diagnostics(einstein)["symmetry"]
+            spacing = max(result.metadata["spacings"])
+            print(
+                f"{points:6d}  {spacing:11.6g}  {float(np.max(np.abs(einstein))):12.6g}  "
+                f"{symmetry['absolute']:12.6g}  {symmetry['relative']:12.6g}"
+            )
+            for warning in result.metadata["resolution"]["warnings"]:
+                print(f"  RESOLUTION HEURISTIC: {warning}")
+        print("Actual field differences on coincident nodes:")
+        for coarse, fine in zip(results, results[1:]):
+            item = compare_nested_results(coarse, fine, fields={"einstein"})
+            values = item["fields"]["einstein"]
+            print(f"  {len(coarse.axis_values[1])} -> {len(fine.axis_values[1])}: "
+                  f"max_diff={values['max_abs_difference']:.6g} "
+                  f"rms_diff={values['rms_difference']:.6g} "
+                  f"relative_rms={values['relative_rms_difference']:.6g}")
+        if len(results) == 3:
+            triple = compare_three_resolutions(*results, field="einstein")
+            print(f"  observed_order={triple['observed_order']} (not a physical-model validation)")
+        print("IMPORTANT: comparison is a convergence diagnostic, not a convergence certificate.")
+        return 0
+    except (ValueError, KeyError, MemoryError, OSError) as exc:
+        print(f"ERROR: {exc}; choose nested resolutions such as 5 9 17.", file=sys.stderr)
+        return 2
 
 
 def _simulate_classical(
@@ -530,7 +545,7 @@ def _interactive() -> int:
 
 def _visualize() -> int:
     try:
-        from tensor_toolkit.gui import main as gui_main
+        from tensor_toolkit.vtk_gui import main as gui_main
         return gui_main()
     except RuntimeError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)

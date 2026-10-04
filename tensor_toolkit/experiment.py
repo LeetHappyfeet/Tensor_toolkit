@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, asdict
 from itertools import product
 from pathlib import Path
 import shutil
@@ -10,6 +10,7 @@ import shutil
 import numpy as np
 
 from tensor_toolkit.backends import require_backend
+from tensor_toolkit.convergence import resolution_report
 from tensor_toolkit.diagnostics import (
     field_diagnostics,
     merge_field_diagnostics,
@@ -17,6 +18,8 @@ from tensor_toolkit.diagnostics import (
 )
 from tensor_toolkit.memory import memory_plan, output_bytes, select_storage_mode
 from tensor_toolkit.metrics import Metric
+from tensor_toolkit.spacetime import describe_spacetime
+from tensor_toolkit.validation import validate_lorentzian_signature
 from tensor_toolkit.reference.geometry import (
     christoffel_symbols,
     inverse_metric,
@@ -97,6 +100,7 @@ def compute_tensor_fields(metric: np.ndarray, spacings, outputs, *, units: str =
         raise ValueError(f"unsupported tensor outputs: {sorted(unknown)}")
     if not outputs:
         raise ValueError("at least one tensor output is required")
+    metric = validate_lorentzian_signature(metric)
     fields: dict[str, np.ndarray] = {}
     if "metric" in outputs:
         fields["metric"] = metric
@@ -324,12 +328,31 @@ def run_experiment(
     else:
         fields, diagnostics = _run_in_memory(experiment, axis_values, spacings)
 
+    # Reuse diagnostics already scanned over the retained output; inspect other
+    # requested fields only when absent from the validation diagnostics.
+    retained_statistics = {
+        name: (diagnostics["fields"][name] if name in diagnostics["fields"]
+               else field_diagnostics(value))
+        for name, value in fields.items()
+    }
+    resolution = resolution_report(experiment.metric, axis_values)
     return ExperimentResult(
         metric_name=experiment.metric.name,
         coordinates=experiment.metric.coordinates,
         axis_values=axis_values,
         fields=fields,
         metadata={
+            "spacetime": asdict(describe_spacetime(experiment.metric)),
+            "metric_configuration": repr(experiment.metric),
+            "resolution": resolution,
+            "field_statistics": retained_statistics,
+            "derivative_provenance": {
+                "metric_derivative": "numpy.gradient(edge_order=2)",
+                "curvature_derivative": "numpy.gradient(edge_order=2) on Christoffel fields",
+                "interior_formal_order": 2,
+                "boundary_formal_order": 2,
+                "convergence_certified": False,
+            },
             "spacings": spacings,
             "shape": grid_shape,
             "stress_energy_units": experiment.stress_energy_units,

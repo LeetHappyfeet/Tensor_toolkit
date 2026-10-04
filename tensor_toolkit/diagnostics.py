@@ -40,37 +40,67 @@ def symmetry_error(tensor: np.ndarray, *, chunk_points: int = 8) -> dict[str, fl
 
 
 def field_diagnostics(tensor: np.ndarray, *, chunk_points: int = 8) -> dict[str, object]:
-    """Return finite-value and, for rank-2 tensors, symmetry diagnostics safely."""
+    """Stream finite-value counts, extrema, RMS and rank-2 symmetry over an array.
+
+    Handles memory-mapped fields without converting the entire tensor to RAM.
+    """
     value = np.asanyarray(tensor)
-    finite = True
+    count = 0
+    nonfinite = 0
+    total_square = 0.0
+    minimum = float("inf")
+    maximum = float("-inf")
     max_abs = 0.0
     for index in _chunk_slices(value, chunk_points):
         chunk = np.asarray(value[index])
-        finite = finite and bool(np.all(np.isfinite(chunk)))
-        if chunk.size:
-            max_abs = max(max_abs, float(np.max(np.abs(chunk))))
-    out: dict[str, object] = {"finite": finite, "max_abs": max_abs}
-    if value.ndim >= 2 and value.shape[:2] == (4, 4):
-        out["symmetry"] = symmetry_error(value, chunk_points=chunk_points)
+        good = chunk[np.isfinite(chunk)]
+        count += int(chunk.size)
+        nonfinite += int(chunk.size - good.size)
+        if good.size:
+            minimum = min(minimum, float(np.min(good)))
+            maximum = max(maximum, float(np.max(good)))
+            max_abs = max(max_abs, float(np.max(np.abs(good))))
+            total_square += float(np.sum(good * good, dtype=np.float64))
+    finite_count = count - nonfinite
+    out: dict[str, object] = {
+        "finite": nonfinite == 0, "nonfinite_count": nonfinite,
+        "value_count": count, "finite_count": finite_count,
+        "min": minimum if finite_count else None,
+        "max": maximum if finite_count else None,
+        "max_abs": max_abs, "sum_of_squares": total_square,
+        "rms": (total_square / finite_count) ** 0.5 if finite_count else None,
+    }
+    # Only a full 4-D-grid rank-2 field (or a single 4x4 matrix) has
+    # the expected mu,nu symmetry. Gamma (rho,mu,nu) and Riemann
+    # (rho,sigma,mu,nu) also begin with 4x4 but MUST NOT use this check.
+    if value.ndim in (2, 6) and value.shape[:2] == (4, 4):
+        out["symmetry"] = symmetry_error(value, chunk_points=chunk_points) if nonfinite == 0 else None
     return out
 
 
 def merge_field_diagnostics(current, local):
-    """Merge diagnostics computed over disjoint spatial chunks."""
+    """Merge diagnostics over disjoint chunks, retaining exact streaming RMS."""
     if current is None:
         return local
+    total = int(current.get("value_count", 0)) + int(local.get("value_count", 0))
+    finite_count = int(current.get("finite_count", 0)) + int(local.get("finite_count", 0))
+    sum_square = float(current.get("sum_of_squares", 0.)) + float(local.get("sum_of_squares", 0.))
+    lows = [v for v in (current.get("min"), local.get("min")) if v is not None]
+    highs = [v for v in (current.get("max"), local.get("max")) if v is not None]
     out = {
         "finite": bool(current.get("finite", True) and local.get("finite", True)),
-        "max_abs": max(float(current.get("max_abs", 0.0)), float(local.get("max_abs", 0.0))),
+        "nonfinite_count": int(current.get("nonfinite_count", 0)) + int(local.get("nonfinite_count", 0)),
+        "value_count": total, "finite_count": finite_count,
+        "min": min(lows) if lows else None, "max": max(highs) if highs else None,
+        "max_abs": max(float(current.get("max_abs", 0.)), float(local.get("max_abs", 0.))),
+        "sum_of_squares": sum_square,
+        "rms": (sum_square / finite_count) ** .5 if finite_count else None,
     }
-    if "symmetry" in current and "symmetry" in local:
+    if current.get("symmetry") is not None and local.get("symmetry") is not None:
         absolute = max(float(current["symmetry"]["absolute"]), float(local["symmetry"]["absolute"]))
         scale = max(float(current["symmetry"]["scale"]), float(local["symmetry"]["scale"]))
-        out["symmetry"] = {
-            "absolute": absolute,
-            "scale": scale,
-            "relative": absolute / scale if scale else 0.0,
-        }
+        out["symmetry"] = {"absolute": absolute, "scale": scale,
+                           "relative": absolute / scale if scale else 0.0}
     return out
 
 
@@ -85,7 +115,7 @@ def validation_status(
             return "FAIL"
     for name in ("metric", "einstein", "stress_energy"):
         item = diagnostics.get(name)
-        if not item or "symmetry" not in item:
+        if not item or not item.get("symmetry"):
             continue
         relative = float(item["symmetry"]["relative"])
         limit = 1e-12 if name == "metric" else warning_relative

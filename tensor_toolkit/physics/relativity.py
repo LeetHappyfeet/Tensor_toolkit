@@ -12,6 +12,7 @@ from tensor_toolkit.constants import SPEED_OF_LIGHT
 from tensor_toolkit.metrics import SchwarzschildIsotropicMetric
 from .bridge import TensorEventSamples, sample_tensors_along_trajectory
 from .trajectory import Trajectory
+from .worldline import Worldline
 
 
 @dataclass(frozen=True)
@@ -24,6 +25,7 @@ class SchwarzschildTrajectorySamples:
     proper_time_rate: np.ndarray
     proper_time: np.ndarray
     tensor_samples: TensorEventSamples | None
+    worldline: Worldline
 
 
 def _relative_events(
@@ -32,7 +34,7 @@ def _relative_events(
     primary: str | int,
     body: str | int,
     times,
-) -> tuple[np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     primary_index = trajectory.body_index(primary)
     body_index = trajectory.body_index(body)
     if primary_index == body_index:
@@ -42,13 +44,14 @@ def _relative_events(
     if query.ndim == 0:
         query = query.reshape(1)
 
-    primary_pos, primary_vel, _ = trajectory.sample(query, body=primary_index)
-    body_pos, body_vel, _ = trajectory.sample(query, body=body_index)
+    primary_pos, primary_vel, primary_acc = trajectory.sample(query, body=primary_index)
+    body_pos, body_vel, body_acc = trajectory.sample(query, body=body_index)
 
     relative_pos = body_pos - primary_pos
     relative_vel = body_vel - primary_vel
+    relative_acc = body_acc - primary_acc
     coordinates = np.column_stack((SPEED_OF_LIGHT * query, relative_pos))
-    return coordinates, relative_vel
+    return coordinates, relative_vel, relative_acc
 
 
 def sample_schwarzschild_trajectory(
@@ -61,17 +64,14 @@ def sample_schwarzschild_trajectory(
     tensor_outputs=None,
     tensor_spacings: tuple[float, float, float, float] | None = None,
 ) -> SchwarzschildTrajectorySamples:
-    """Sample a Newtonian trajectory in a static Schwarzschild background.
+    """Sample a classical trajectory in a static Schwarzschild background.
 
     The selected primary defines the spatial origin. This is a one-way bridge:
-    the Newtonian trajectory is not altered by GR. Coordinates passed to the
-    metric are (ct, x, y, z) in metres.
-
-    If tensor_outputs are requested, tensor_spacings must also be supplied in
-    the same coordinate units: (d(ct), dx, dy, dz), all in metres.
+    the input trajectory is not altered by GR. Coordinates passed to the metric
+    are (ct, x, y, z) in metres.
     """
     metric = SchwarzschildIsotropicMetric(primary_mass)
-    coordinates, relative_velocity = _relative_events(
+    coordinates, relative_velocity, relative_acceleration = _relative_events(
         trajectory,
         primary=primary,
         body=body,
@@ -98,9 +98,7 @@ def sample_schwarzschild_trajectory(
         raise ValueError("sampled trajectory is not timelike in Schwarzschild spacetime")
     proper_time_rate = np.sqrt(interval_rate2)
 
-    # Integrate proper time on the complete Newtonian timestep history so the
-    # accumulated result is independent of how sparsely the caller samples GR.
-    full_coordinates, full_relative_velocity = _relative_events(
+    full_coordinates, full_relative_velocity, _ = _relative_events(
         trajectory,
         primary=primary,
         body=body,
@@ -135,6 +133,30 @@ def sample_schwarzschild_trajectory(
 
     query_times = coordinates[:, 0] / SPEED_OF_LIGHT
     proper_time = np.interp(query_times, trajectory.times, full_proper_time)
+    four_velocity = coordinate_velocity / proper_time_rate[:, np.newaxis]
+    coordinate_acceleration = np.column_stack(
+        (
+            np.zeros(len(coordinates), dtype=np.float64),
+            relative_acceleration,
+        )
+    )
+    worldline = Worldline(
+        parameter=query_times,
+        coordinates=coordinates,
+        tangent=coordinate_velocity,
+        coordinate_acceleration=coordinate_acceleration,
+        proper_time=proper_time,
+        four_velocity=four_velocity,
+        body_name=trajectory.body_names[trajectory.body_index(body)],
+        metadata={
+            "parameter": "coordinate_time",
+            "coordinate_names": ("ct", "x", "y", "z"),
+            "coordinate_units": "m",
+            "proper_time_units": "s",
+            "background": "SchwarzschildIsotropicMetric",
+            "source": "classical_trajectory",
+        },
+    )
 
     tensor_samples = None
     if tensor_outputs is not None:
@@ -173,6 +195,7 @@ def sample_schwarzschild_trajectory(
         proper_time_rate=proper_time_rate,
         proper_time=proper_time,
         tensor_samples=tensor_samples,
+        worldline=worldline,
     )
 
 
@@ -190,6 +213,7 @@ def save_schwarzschild_trajectory_samples(
         "metric": samples.metric,
         "proper_time_rate": samples.proper_time_rate,
         "proper_time": samples.proper_time,
+        "four_velocity": samples.worldline.four_velocity,
     }
     if samples.tensor_samples is not None:
         for name, value in samples.tensor_samples.fields.items():
@@ -202,6 +226,7 @@ def save_schwarzschild_trajectory_samples(
         "coordinates": ["ct", "x", "y", "z"],
         "coordinate_units": "m",
         "proper_time_units": "s",
+        "worldline_parameter": "coordinate_time",
         "tensor_fields": (
             sorted(samples.tensor_samples.fields)
             if samples.tensor_samples is not None

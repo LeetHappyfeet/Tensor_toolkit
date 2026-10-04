@@ -10,7 +10,7 @@ from dataclasses import replace
 
 import numpy as np
 
-from tensor_toolkit.metrics import AlcubierreMetric, DeSitterFlatMetric, MinkowskiMetric
+from tensor_toolkit.metrics import AlcubierreMetric, DeSitterFlatMetric, MinkowskiMetric, FLRWMetric, LinearizedPlaneWaveMetric
 
 COORDINATE_NAMES = ("t", "x", "y", "z")
 FIELD_SYMBOLS = {
@@ -68,6 +68,11 @@ def editable_metric_parameters(metric) -> dict[str, float]:
             "sigma": float(metric.sigma),
             "x0": float(metric.x0),
         }
+    if isinstance(metric, FLRWMetric):
+        return {"hubble": float(metric.hubble), "scale0": float(metric.scale0)}
+    if isinstance(metric, LinearizedPlaneWaveMetric):
+        return {"plus": float(metric.plus), "cross": float(metric.cross),
+                "angular_frequency": float(metric.angular_frequency), "phase": float(metric.phase)}
     raise TypeError(f"unsupported metric type for GUI parameter editing: {type(metric).__name__}")
 
 

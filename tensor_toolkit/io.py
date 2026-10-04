@@ -126,4 +126,20 @@ def load_result(path):
     return metadata, fields, axes
 
 
-__all__ = ["save_result", "load_result"]
+def load_experiment_result(path):
+    """Rehydrate a completed experiment for convergence and cached-grid sampling.
+
+    Disk-backed fields remain read-only memmaps; no full RAM copy is forced.
+    """
+    from tensor_toolkit.experiment import ExperimentResult
+    metadata, fields, axes = load_result(path)
+    return ExperimentResult(
+        metric_name=str(metadata["metric_name"]),
+        coordinates=tuple(metadata["coordinates"]),
+        axis_values=axes, fields=fields,
+        metadata={k: v for k, v in metadata.items()
+                  if k not in {"metric_name", "coordinates", "fields"}},
+    )
+
+
+__all__ = ["save_result", "load_result", "load_experiment_result"]

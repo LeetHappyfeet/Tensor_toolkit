@@ -11,7 +11,7 @@ import numpy as np
 from tensor_toolkit.experiment import run_experiment
 from tensor_toolkit.io import load_result, save_result
 from tensor_toolkit.memory import available_memory_bytes, memory_plan, output_bytes, select_storage_mode
-from tensor_toolkit.registry import builtins, configure_grid, get_experiment
+from tensor_toolkit.registry import gui_builtins, configure_grid, get_experiment
 from tensor_toolkit.visualization import (
     COORDINATE_NAMES,
     center_matrix,
@@ -96,7 +96,7 @@ class TensorToolkitGUI:
         ttk.Label(panel, text="Metric").grid(row=row, column=0, sticky="w")
         self.metric_var = tk.StringVar(value="minkowski")
         metric_box = ttk.Combobox(
-            panel, textvariable=self.metric_var, values=sorted(builtins()), state="readonly", width=20
+            panel, textvariable=self.metric_var, values=sorted(gui_builtins()), state="readonly", width=20
         )
         metric_box.grid(row=row, column=1, sticky="ew")
         metric_box.bind("<<ComboboxSelected>>", lambda _e: self._load_metric_defaults()); row += 1
