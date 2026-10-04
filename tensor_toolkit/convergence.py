@@ -6,7 +6,8 @@ No GUI or VTK imports belong in this module.
 """
 from __future__ import annotations
 
-from math import ceil, log, sqrt
+from math import ceil, log
+import json
 import numpy as np
 
 from .metrics import AlcubierreMetric
@@ -100,10 +101,18 @@ def _nested_indices(coarse_axes, fine_axes):
 
 
 def _check_compatible(coarse, fine):
+    # Reject historical results without parameter provenance: same metric family
+    # can represent radically different physical configurations.
+    for result in (coarse, fine):
+        if not result.metadata.get("metric_configuration") or not result.metadata.get("spacetime"):
+            raise ValueError("comparison requires saved metric configuration and spacetime chart metadata")
+    # Normalizing JSON handles persisted list-vs-tuple coordinate metadata.
+    chart_c = json.dumps(coarse.metadata["spacetime"], sort_keys=True)
+    chart_f = json.dumps(fine.metadata["spacetime"], sort_keys=True)
     if (coarse.metric_name != fine.metric_name or tuple(coarse.coordinates) != tuple(fine.coordinates)
-        or coarse.metadata.get("metric_configuration") != fine.metadata.get("metric_configuration")
+        or coarse.metadata["metric_configuration"] != fine.metadata["metric_configuration"]
         or coarse.metadata.get("stress_energy_units") != fine.metadata.get("stress_energy_units")
-        or coarse.metadata.get("spacetime") != fine.metadata.get("spacetime")):
+        or chart_c != chart_f):
         raise ValueError("convergence requires the same metric configuration, chart and units")
     return _nested_indices(coarse.axis_values, fine.axis_values)
 
