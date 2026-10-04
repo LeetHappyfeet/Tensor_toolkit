@@ -70,7 +70,10 @@ def field_diagnostics(tensor: np.ndarray, *, chunk_points: int = 8) -> dict[str,
         "max_abs": max_abs, "sum_of_squares": total_square,
         "rms": (total_square / finite_count) ** 0.5 if finite_count else None,
     }
-    if value.ndim >= 2 and value.shape[:2] == (4, 4):
+    # Only a full 4-D-grid rank-2 field (or a single 4x4 matrix) has
+    # the expected mu,nu symmetry. Gamma (rho,mu,nu) and Riemann
+    # (rho,sigma,mu,nu) also begin with 4x4 but MUST NOT use this check.
+    if value.ndim in (2, 6) and value.shape[:2] == (4, 4):
         out["symmetry"] = symmetry_error(value, chunk_points=chunk_points) if nonfinite == 0 else None
     return out
 
