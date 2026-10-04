@@ -105,3 +105,25 @@ def test_saved_grid_roundtrip_can_be_sampled_after_reload(tmp_path):
     assert np.allclose(sampler.metric_at((0., .3, .1, .2)),
                        np.diag([-1., 1., 1., 1.]))
     assert np.allclose(sampler.connection_at((0., .3, .1, .2)), 0.)
+
+
+def test_reference_sampler_reuses_repeated_local_stencil():
+    class CountingMinkowski:
+        name = "Minkowski counting"
+        coordinates = ("t", "x", "y", "z")
+        def __init__(self):
+            self.evaluations = 0
+        def evaluate(self, grid):
+            self.evaluations += 1
+            return MinkowskiMetric().evaluate(grid)
+    metric = CountingMinkowski()
+    sampler = SpacetimeSampler(metric, SPACING, cache_size=2)
+    event = (0., 0., 0., 0.)
+    sampler.connection_at(event)
+    initial_calls = metric.evaluations
+    assert initial_calls == 1
+    sampler.connection_at(event)
+    assert metric.evaluations == initial_calls
+    assert sampler.cache_info()["hits"] == 1
+    sampler.connection_at((1., 0., 0., 0.))
+    assert metric.evaluations == initial_calls + 1
