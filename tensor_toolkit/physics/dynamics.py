@@ -7,7 +7,7 @@ from typing import Mapping, Protocol
 
 import numpy as np
 
-from tensor_toolkit.constants import GRAVITATIONAL_CONSTANT
+from tensor_toolkit.constants import GRAVITATIONAL_CONSTANT, SPEED_OF_LIGHT
 from .gravity import newtonian_gravity_accelerations
 from .state import System
 
@@ -129,3 +129,64 @@ class CompositeDynamics:
                 raise ValueError("dynamics model returned non-finite acceleration")
             total += contribution
         return total
+
+
+@dataclass(frozen=True)
+class CentralBody1PN:
+    """Test-particle 1PN motion in the rest frame of ONE fixed spherical primary.
+
+    Harmonic/isotropic weak-field equation, with r and v relative to the
+    stationary primary and mu=GM:
+
+      a = -mu*r/r^3
+          + mu/(c^2*r^3) * ((4*mu/r - v^2)*r + 4*(r.v)*v)
+
+    This is NOT a general Einstein-Infeld-Hoffmann N-body implementation.
+    Only one positive-mass body and any number of passive zero-mass probes
+    are permitted. Use RK4, never ordinary velocity-Verlet.
+    """
+    primary: str
+    gravitational_constant: float = GRAVITATIONAL_CONSTANT
+    speed_of_light: float = SPEED_OF_LIGHT
+    velocity_dependent: bool = field(default=True, init=False)
+
+    def __post_init__(self):
+        if not self.primary:
+            raise ValueError("1PN requires a named primary")
+        if (not np.isfinite(self.gravitational_constant) or self.gravitational_constant <= 0 or
+            not np.isfinite(self.speed_of_light) or self.speed_of_light <= 0):
+            raise ValueError("1PN physical constants must be finite and positive")
+
+    def accelerations(self, t, positions, velocities, masses, system):
+        del t
+        p = np.asarray(positions, dtype=np.float64)
+        v = np.asarray(velocities, dtype=np.float64)
+        mass = np.asarray(masses, dtype=np.float64)
+        if p.shape != v.shape or p.shape != (len(system.bodies), 3) or mass.shape != (p.shape[0],):
+            raise ValueError("1PN requires matching (N,3) positions and velocities and (N,) masses")
+        if self.primary not in system.names:
+            raise KeyError(f"unknown 1PN primary {self.primary!r}")
+        index = system.names.index(self.primary)
+        if mass[index] <= 0 or np.count_nonzero(mass > 0) != 1:
+            raise ValueError("central-body 1PN supports exactly one positive-mass primary")
+        if not np.allclose(v[index], 0.0, rtol=0., atol=1e-12):
+            raise ValueError("1PN central primary must be stationary in the chosen inertial chart")
+        mu = float(self.gravitational_constant) * float(mass[index])
+        c2 = float(self.speed_of_light)**2
+        out = np.zeros_like(p)
+        for j in range(len(system.bodies)):
+            if j == index:
+                continue
+            rvec = p[j]-p[index]
+            relative_v = v[j]-v[index]
+            r = float(np.linalg.norm(rvec))
+            v2 = float(np.dot(relative_v, relative_v))
+            if r <= max(0.0, system.radii[index]):
+                raise ValueError("1PN probe at or inside primary surface/singularity")
+            if mu/(r*c2) >= 0.05 or v2/c2 >= 0.05:
+                raise ValueError("central-body 1PN requires GM/(rc²)<0.05 and v²/c²<0.05")
+            out[j] = (
+                -(mu/r**3)*rvec +
+                (mu/(c2*r**3))*((4*mu/r-v2)*rvec + 4*np.dot(rvec, relative_v)*relative_v)
+            )
+        return out
