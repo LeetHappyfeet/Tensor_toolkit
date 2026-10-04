@@ -86,6 +86,9 @@ print(sampler.strategy_info(), sampler.cache_info())
 
 For interpolation, create an experiment that retains the requested fields,
 then pass its completed result with `method="cached_grid", grid_result=result`.
+A result written with `save_result(result, directory)` can be rehydrated with
+`tensor_toolkit.io.load_experiment_result(directory)` and passed directly as
+`grid_result` (including read-only memmaps for disk-backed saves).
 The sampler rejects an incompatible metric name, parameter representation,
 coordinate chart, out-of-domain event or mismatched stress-energy units.
 An analytic or fourth-order *connection-only* request for Riemann/Ricci raises
