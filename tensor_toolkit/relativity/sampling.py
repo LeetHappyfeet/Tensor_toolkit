@@ -65,7 +65,7 @@ class SpacetimeSampler:
             raise ValueError("cache_size must be a nonnegative integer")
         object.__setattr__(self, "spacings", spacings)
         object.__setattr__(self, "_metric_signature", (
-            repr(self.metric), tuple(self.metric.coordinates),
+            repr(self.metric), tuple(getattr(self.metric, "coordinates", ())),
             repr(getattr(self.metric, "definition", None))))
         debug_log(
             self.debug,
@@ -137,7 +137,7 @@ class SpacetimeSampler:
 
     def fields_at(self, event, outputs) -> dict[str, np.ndarray | float]:
         event = self._event(event)
-        if self._metric_signature != (repr(self.metric), tuple(self.metric.coordinates),
+        if self._metric_signature != (repr(self.metric), tuple(getattr(self.metric, "coordinates", ())),
                                       repr(getattr(self.metric, "definition", None))):
             self.clear_cache()
             raise ValueError("metric parameters/chart changed after sampler construction; create a new sampler")
