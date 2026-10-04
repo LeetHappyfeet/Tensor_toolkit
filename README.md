@@ -53,10 +53,12 @@ Python 3.10 or newer is required.
 ```text
 git clone --branch Development https://github.com/LeetHappyfeet/Tensor_toolkit.git Tensor_toolkit-dev
 cd Tensor_toolkit-dev
-python -m pip install -e .
+python -m pip install -e ".[visualization,test]"
 ```
 
-On Windows, Miniconda/Conda environments work well. The desktop simulator uses Tkinter and Matplotlib.
+On Windows, the built-in Python `venv` works without Conda. The main scientific
+3-D visualizer uses Qt/PySide6 and VTK; all GR computations run in the
+headless Tensor Toolkit package, not in VTK.
 
 ## Command line
 
