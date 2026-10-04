@@ -94,9 +94,22 @@ tensor-toolkit inspect results/de-sitter7 --field einstein --center
 Run a resolution study:
 
 ```text
-tensor-toolkit convergence de-sitter --points 5 7 9
-tensor-toolkit convergence alcubierre --points 5 7 9
+tensor-toolkit convergence de-sitter --points 5 9 17
+tensor-toolkit convergence alcubierre --points 5 9 17
 ```
+
+The convergence command now compares numerical Einstein fields at matching nodes of
+nested grids; it does not treat tensor symmetry alone as convergence. Each saved
+experiment also records a resolution heuristic, field extrema/RMS, and derivative
+provenance. The Alcubierre report warns when the 10–90% radial wall transition
+is poorly resolved or leaves the computational domain.
+
+Geometry sampling offers `numerical` (reference), `analytic` (Minkowski and
+isotropic Schwarzschild connections), `finite4` (fourth-order point connection),
+and `cached_grid` (interpolation of compatible completed field results).
+These modes are explicit; connection-only strategies do not pretend to
+produce fourth-order curvature. See [numerical reliability and sampling
+notes](docs/NUMERICAL_RELIABILITY.md).
 
 ## Newtonian mechanics and relativity bridge
 
