@@ -266,5 +266,49 @@ class WeakField1PNMetric:
         return g
 
 
+@dataclass(frozen=True)
+class ConstantDensityInteriorMetric:
+    """Exact static interior Schwarzschild solution for an incompressible star.
+
+    Areal spherical chart (ct,r,theta,phi); 0<r<=R, |2m/R|<8/9,
+    and polar axes excluded. This classical exact solution is supplementary
+    to the supplied Catalogue; it is NOT numerical TOV/matter evolution.
+
+    At r=R the first fundamental form matches Schwarzschild exterior in
+    the same areal spherical chart.
+    """
+    mass_kg: float
+    surface_radius_m: float
+    name: str = "Interior Schwarzschild (constant density)"
+    coordinates: tuple[str, str, str, str] = ("ct", "r", "theta", "phi")
+    definition: ClassVar[SpacetimeDefinition] = SpacetimeDefinition(
+        "interior-Schwarzschild",
+        CoordinateChart(("ct", "r", "theta", "phi"),
+                        ("m", "m", "rad", "rad"), "spherical",
+                        "0<r<=surface_radius; 2m/R<8/9; 0<theta<pi"),
+        "exact", "Analytic uniform-density interior Schwarzschild solution; supplemental to Catalogue")
+
+    def evaluate(self, coordinate_grid):
+        _, r, theta, _ = coordinate_grid
+        m = _mass_length(self.mass_kg)
+        R = float(self.surface_radius_m)
+        if not np.isfinite(R) or R <= (9.0/4.0)*m:
+            raise ValueError("constant-density interior requires R > 9GM/(4c²)")
+        r, theta = np.broadcast_arrays(np.asarray(r, dtype=float), np.asarray(theta, dtype=float))
+        if (np.any(~np.isfinite(r)) or np.any(~np.isfinite(theta)) or
+                np.any(r <= 0) or np.any(r > R) or
+                np.any(theta <= 0) or np.any(theta >= np.pi)):
+            raise ValueError("interior metric requires 0<r<=R and 0<theta<pi")
+        radial_factor = 1.0 - 2*m*r*r/R**3
+        lapse = 0.5*(3*np.sqrt(1-2*m/R) - np.sqrt(radial_factor))
+        g = _empty(coordinate_grid)
+        g[0, 0] = -lapse*lapse
+        g[1, 1] = 1/radial_factor
+        g[2, 2] = r*r
+        g[3, 3] = r*r*np.sin(theta)**2
+        return g
+
+
 __all__ = ["KerrBoyerLindquistMetric", "KerrSchildMetric", "ReissnerNordstromMetric",
-           "FLRWMetric", "LinearizedPlaneWaveMetric", "WeakField1PNMetric", "EPSILON_0"]
+           "FLRWMetric", "LinearizedPlaneWaveMetric", "WeakField1PNMetric",
+           "ConstantDensityInteriorMetric", "EPSILON_0"]
