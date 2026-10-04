@@ -90,7 +90,7 @@ def point_connection_fields(metric, event, spacings, outputs, *, method):
     out = {}
     if "metric" in outputs:
         out["metric"] = g
-    if outputs & {"inverse_metric", "christoffel"}:
+    if "christoffel" in outputs:
         if method == "analytic":
             dg = analytic_metric_derivatives(metric, event)
         elif method == "finite4":
@@ -98,10 +98,11 @@ def point_connection_fields(metric, event, spacings, outputs, *, method):
         else:
             raise ValueError(f"unrecognized point-derivative method {method!r}")
         inverse, gamma = connection_from_derivatives(g, dg)
+        out["christoffel"] = gamma
         if "inverse_metric" in outputs:
             out["inverse_metric"] = inverse
-        if "christoffel" in outputs:
-            out["christoffel"] = gamma
+    elif "inverse_metric" in outputs:
+        out["inverse_metric"] = np.linalg.inv(g)
     return out
 
 
