@@ -7,6 +7,7 @@ from tensor_toolkit.metrics import (
     AlcubierreMetric, DeSitterFlatMetric, MinkowskiMetric,
     SchwarzschildIsotropicMetric, KerrBoyerLindquistMetric, KerrSchildMetric,
     ReissnerNordstromMetric, FLRWMetric, LinearizedPlaneWaveMetric, WeakField1PNMetric,
+    ConstantDensityInteriorMetric,
 )
 from tensor_toolkit.constants import SPEED_OF_LIGHT, GRAVITATIONAL_CONSTANT
 from tensor_toolkit.spacetime import describe_spacetime
@@ -45,6 +46,9 @@ def builtins() -> dict[str, Experiment]:
         "flrw-closed": Experiment(FLRWMetric(hubble=0.1, curvature=1), _axes(0.8, 5), common),
         "flrw-open": Experiment(FLRWMetric(hubble=0.1, curvature=-1), _axes(0.8, 5), common),
         "plane-wave": Experiment(LinearizedPlaneWaveMetric(plus=0.03), _axes(1.0, 5), common),
+        "schwarzschild-interior": Experiment(
+            ConstantDensityInteriorMetric(mass_ref, surface_radius_m=5.0),
+            _axes4((-1, 1), (0.8, 4.0), (0.5, 2.5), (-1, 1)), common),
     }
 
 
