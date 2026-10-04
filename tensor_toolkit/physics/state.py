@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from .properties import PhysicalProperties
 import numpy as np
 
 
@@ -24,6 +25,7 @@ class Body:
     position: np.ndarray
     velocity: np.ndarray
     radius: float = 0.0
+    properties: PhysicalProperties = field(default_factory=PhysicalProperties)
 
     def __post_init__(self) -> None:
         if not self.name:
@@ -36,6 +38,11 @@ class Body:
             raise ValueError("radius must be finite and non-negative")
         object.__setattr__(self, "mass", mass)
         object.__setattr__(self, "radius", radius)
+        if not isinstance(self.properties, PhysicalProperties):
+            raise TypeError("properties must be a PhysicalProperties instance")
+        propulsion = self.properties.propulsion
+        if propulsion is not None and propulsion.propellant_mass_kg > mass:
+            raise ValueError("propellant mass cannot exceed total body mass")
         object.__setattr__(self, "position", _vector3(self.position, name="position"))
         object.__setattr__(self, "velocity", _vector3(self.velocity, name="velocity"))
 
