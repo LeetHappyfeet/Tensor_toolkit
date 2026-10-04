@@ -166,6 +166,7 @@ class SchwarzschildIsotropicMetric:
 from tensor_toolkit.catalogue_metrics import (
     KerrBoyerLindquistMetric, KerrSchildMetric, ReissnerNordstromMetric,
     FLRWMetric, LinearizedPlaneWaveMetric, WeakField1PNMetric,
+    ConstantDensityInteriorMetric,
 )
 
 __all__ = [
@@ -176,4 +177,5 @@ __all__ = [
     "SchwarzschildIsotropicMetric",
     "KerrBoyerLindquistMetric", "KerrSchildMetric", "ReissnerNordstromMetric",
     "FLRWMetric", "LinearizedPlaneWaveMetric", "WeakField1PNMetric",
+    "ConstantDensityInteriorMetric",
 ]
