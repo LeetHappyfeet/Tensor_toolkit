@@ -23,15 +23,11 @@ A supported metric exposes a name, coordinate ordering, and an `evaluate()` meth
 
 `(4, 4, N0, N1, N2, N3)`.
 
-Current metric classes include Minkowski, flat-slicing de Sitter, Alcubierre, and Schwarzschild isotropic Cartesian.
-
-The built-in `tensor-toolkit run` registry currently exposes:
-
-- `minkowski`
-- `de-sitter`
-- `alcubierre`
-
-Schwarzschild is currently used programmatically, by validation, and by the classical-trajectory bridge rather than as a general registered grid experiment.
+Built-in metrics now cover Minkowski, de Sitter, Alcubierre, Schwarzschild,
+Kerr–Schild, Kerr Boyer–Lindquist, Reissner–Nordstrom, weak-field 1PN,
+FLRW, and linearized plane waves. Different charts are not interchangeable;
+the registry gives spherical and compact-object metrics domain-safe axis
+defaults. See [SPACETIME_CATALOGUE.md](SPACETIME_CATALOGUE.md).
 
 An `Experiment` owns four coordinate axes, a metric model, requested outputs, stress-energy units, backend choice, and memory policy.
 
