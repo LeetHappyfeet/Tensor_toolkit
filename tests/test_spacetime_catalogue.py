@@ -8,6 +8,7 @@ from tensor_toolkit.metrics import (
     MinkowskiMetric, DeSitterFlatMetric, KerrBoyerLindquistMetric,
     KerrSchildMetric, ReissnerNordstromMetric, FLRWMetric,
     LinearizedPlaneWaveMetric, WeakField1PNMetric, SchwarzschildIsotropicMetric,
+    ConstantDensityInteriorMetric,
 )
 from tensor_toolkit.registry import builtins, gui_builtins, configure_grid
 from tensor_toolkit.spacetime import describe_spacetime
@@ -118,3 +119,12 @@ def test_metric_pipeline_rejects_wrong_signature_and_preserves_chart_metadata():
         result = run_experiment(experiment)
         assert result.fields["inverse_metric"].shape == result.fields["metric"].shape
         assert result.metadata["spacetime"]["chart"]["names"] == experiment.metric.coordinates
+
+
+def test_constant_density_interior_matches_exterior_first_form_at_surface():
+    interior = point(ConstantDensityInteriorMetric(M, 5.0), 0, 5, 1.1, 0)
+    exterior = point(KerrBoyerLindquistMetric(M, spin=0), 0, 5, 1.1, 0)
+    assert np.allclose(interior, exterior, rtol=1e-14, atol=1e-14)
+    with pytest.raises(ValueError, match="9GM"):
+        ConstantDensityInteriorMetric(M, 2.0).evaluate(
+            tuple(np.array([v]) for v in (0, 1.0, 1.1, 0)))
