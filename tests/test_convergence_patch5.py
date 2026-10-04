@@ -6,6 +6,7 @@ import pytest
 
 from tensor_toolkit.convergence import (
     resolution_report, compare_nested_results, compare_three_resolutions,
+    spatial_reflection_report,
 )
 from tensor_toolkit.diagnostics import field_diagnostics, merge_field_diagnostics
 from tensor_toolkit.experiment import Axis, ExperimentResult, run_experiment
@@ -99,3 +100,20 @@ def test_connection_and_riemann_statistics_do_not_use_rank_two_symmetry():
     assert "symmetry" not in field_diagnostics(riemann)
     rank2 = np.zeros((4, 4, 3, 3, 3, 3), dtype=np.float64)
     assert "symmetry" in field_diagnostics(rank2)
+
+
+def test_transverse_reflection_uses_covariant_index_parity():
+    axes = tuple(np.linspace(-1., 1., 3) for _ in range(4))
+    tensor = np.zeros((4, 4, 3, 3, 3, 3))
+    tensor[0, 2] = axes[2][None, None, :, None]
+    tensor[2, 0] = tensor[0, 2]
+    result = ExperimentResult(
+        metric_name="Alcubierre", coordinates=("t", "x", "y", "z"),
+        axis_values=axes, fields={"stress_energy": tensor}, metadata={})
+    check = spatial_reflection_report(result, "stress_energy", axis=2)
+    assert check["tensor_index_parity_applied"]
+    assert check["max_abs_residual"] == pytest.approx(0.)
+    with pytest.raises(ValueError, match="not a symmetry"):
+        spatial_reflection_report(result, "stress_energy", axis=1)
+    tensor[0, 2, :, :, -1, :] += 1.
+    assert spatial_reflection_report(result, "stress_energy", axis=2)["max_abs_residual"] > 0.
