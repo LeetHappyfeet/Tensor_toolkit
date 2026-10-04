@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, asdict
 from itertools import product
 from pathlib import Path
 import shutil
@@ -17,6 +17,7 @@ from tensor_toolkit.diagnostics import (
 )
 from tensor_toolkit.memory import memory_plan, output_bytes, select_storage_mode
 from tensor_toolkit.metrics import Metric
+from tensor_toolkit.spacetime import describe_spacetime
 from tensor_toolkit.reference.geometry import (
     christoffel_symbols,
     inverse_metric,
@@ -330,6 +331,7 @@ def run_experiment(
         axis_values=axis_values,
         fields=fields,
         metadata={
+            "spacetime": asdict(describe_spacetime(experiment.metric)),
             "spacings": spacings,
             "shape": grid_shape,
             "stress_energy_units": experiment.stress_energy_units,
