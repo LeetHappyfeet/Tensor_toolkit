@@ -89,3 +89,13 @@ def test_experiment_persists_resolution_statistics_and_provenance():
     assert result.metadata["field_statistics"]["einstein"]["max_abs"] == pytest.approx(0.)
     assert result.metadata["derivative_provenance"]["interior_formal_order"] == 2
     assert result.metadata["derivative_provenance"]["convergence_certified"] is False
+
+
+def test_connection_and_riemann_statistics_do_not_use_rank_two_symmetry():
+    gamma = np.zeros((4, 4, 4, 3, 3, 3, 3), dtype=np.float64)
+    gamma[0, 1, 2] = 1.
+    riemann = np.zeros((4, 4, 4, 4, 3, 3, 3, 3), dtype=np.float64)
+    assert "symmetry" not in field_diagnostics(gamma)
+    assert "symmetry" not in field_diagnostics(riemann)
+    rank2 = np.zeros((4, 4, 3, 3, 3, 3), dtype=np.float64)
+    assert "symmetry" in field_diagnostics(rank2)
