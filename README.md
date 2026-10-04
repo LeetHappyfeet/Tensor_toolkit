@@ -171,7 +171,7 @@ Current Phase 4 infrastructure includes:
 - null-ray construction from local observer directions, and
 - scientific ray-bundle integration.
 
-Phase 4 intentionally analyzes prescribed geometry rather than evolving it. The geodesic solver is currently a transparent fixed-step RK4 reference path whose connection evaluations use local finite-difference stencils; cached/interpolated fields should be introduced before large ray-tracing workloads.
+Phase 4 intentionally analyzes prescribed geometry rather than evolving it. The geodesic solver remains a fixed-step RK4 reference path. Its sampler now also supports analytic point connections for selected metrics, fourth-order point derivatives, and explicit interpolation of compatible retained geometry grids; those options do not make the geodesic integrator adaptive or establish curvature convergence.
 
 See `docs/PHASE4_RELATIVITY.md`.
 
