@@ -186,4 +186,58 @@ def compare_three_resolutions(coarse, medium, fine, *, field: str) -> dict[str, 
             "note": "Observed order is a diagnostic, not validation of the physical model."}
 
 
-__all__ = ["resolution_report", "compare_nested_results", "compare_three_resolutions"]
+def spatial_reflection_report(result, field: str, *, axis: int = 2) -> dict[str, object]:
+    """Check a justified Cartesian reflection, including tensor-index parity.
+
+    Alcubierre is reflection-invariant in transverse y and z; Minkowski is
+    invariant about any centered Cartesian spatial axis. This is an opt-in
+    numerical check and cannot establish convergence on its own.
+    """
+    if result.metric_name == "Alcubierre":
+        supported = (2, 3)
+    elif result.metric_name == "Minkowski":
+        supported = (1, 2, 3)
+    else:
+        raise ValueError("no justified reflection rule registered for this metric")
+    if axis not in supported:
+        raise ValueError("requested spatial reflection is not a symmetry of this metric")
+    coords = result.axis_values
+    if len(coords) != 4:
+        raise ValueError("reflection requires four coordinate axes")
+    values = np.asarray(coords[axis], dtype=np.float64)
+    if not np.allclose(values, -values[::-1], atol=1e-12, rtol=1e-12):
+        raise ValueError("reflection axis must be centered at zero with symmetric nodes")
+    if field not in result.fields:
+        raise KeyError(field)
+    source = np.asanyarray(result.fields[field])
+    if source.ndim == 4 and field == "ricci_scalar":
+        signs = None
+    elif source.ndim == 6 and field in {
+        "metric", "inverse_metric", "ricci", "einstein", "stress_energy"
+    } and source.shape[:2] == (4, 4):
+        signs = np.fromfunction(
+            lambda i, j: (-1.) ** ((i == axis).astype(int) + (j == axis).astype(int)),
+            (4, 4), dtype=int,
+        )[:, :, None, None, None]
+    else:
+        raise ValueError("reflection supports scalar curvature and rank-two metric/GR fields only")
+    max_error = 0.
+    max_magnitude = 0.
+    prefix = source.ndim - 4
+    for time_index in range(len(coords[0])):
+        slab = np.asarray(source[(slice(None),)*prefix + (time_index, slice(None),
+                                                          slice(None), slice(None))])
+        if not np.all(np.isfinite(slab)):
+            raise ValueError("reflection field contains non-finite values")
+        reflected = np.flip(slab, axis=prefix + axis - 1)
+        residual = slab - reflected if signs is None else slab - signs * reflected
+        max_error = max(max_error, float(np.max(np.abs(residual))))
+        max_magnitude = max(max_magnitude, float(np.max(np.abs(slab))))
+    return {"axis": axis, "field": field, "max_abs_residual": max_error,
+            "relative_max_residual": max_error / max_magnitude if max_magnitude else 0.,
+            "tensor_index_parity_applied": signs is not None,
+            "convergence_certified": False}
+
+
+__all__ = ["resolution_report", "compare_nested_results",
+           "compare_three_resolutions", "spatial_reflection_report"]
