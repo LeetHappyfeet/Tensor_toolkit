@@ -49,6 +49,7 @@ class SpacetimeSampler:
     _field_cache: OrderedDict = field(default_factory=OrderedDict, init=False, repr=False, compare=False)
     _cache_hits: int = field(default=0, init=False, repr=False, compare=False)
     _cache_misses: int = field(default=0, init=False, repr=False, compare=False)
+    _metric_signature: tuple = field(default=(), init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         spacings = tuple(float(value) for value in self.spacings)
@@ -63,6 +64,9 @@ class SpacetimeSampler:
         if not isinstance(self.cache_size, int) or self.cache_size < 0:
             raise ValueError("cache_size must be a nonnegative integer")
         object.__setattr__(self, "spacings", spacings)
+        object.__setattr__(self, "_metric_signature", (
+            repr(self.metric), tuple(self.metric.coordinates),
+            repr(getattr(self.metric, "definition", None))))
         debug_log(
             self.debug,
             "sampler",
@@ -133,6 +137,10 @@ class SpacetimeSampler:
 
     def fields_at(self, event, outputs) -> dict[str, np.ndarray | float]:
         event = self._event(event)
+        if self._metric_signature != (repr(self.metric), tuple(self.metric.coordinates),
+                                      repr(getattr(self.metric, "definition", None))):
+            self.clear_cache()
+            raise ValueError("metric parameters/chart changed after sampler construction; create a new sampler")
         outputs = frozenset(outputs)
         if not outputs or outputs - SUPPORTED_OUTPUTS:
             raise ValueError(f"invalid field request: {sorted(outputs)}")
