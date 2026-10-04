@@ -9,7 +9,7 @@ The CPU/NumPy `float64` geometry path is tested first.
 Current checks include:
 
 - shared physical constants and Einstein coupling,
-- metric shape, symmetry, finiteness, and dtype validation,
+- metric shape, symmetry, finiteness, dtype, determinant and (-,+,+,+) Lorentzian signature validation,
 - exact Minkowski vacuum behavior,
 - nontrivial flat-coordinate behavior,
 - de Sitter reference behavior,
@@ -38,6 +38,14 @@ Current checks include:
 A zero-mass passive probe does not contribute to total system conservation quantities, so probe-specific energy and angular-momentum diagnostics are used where system totals would be uninformative.
 
 See [NEWTONIAN_MECHANICS.md](NEWTONIAN_MECHANICS.md).
+
+The first physics-catalogue pass adds chart-specific parameter/domain tests,
+Kerr zero-spin limits, Reissner-Nordstrom zero-charge limits, FLRW/de Sitter
+equivalence at k=0, linearized-wave zero-amplitude limits, and the
+Schwarzschild isotropic weak-field 1PN expansion. See
+[SPACETIME_CATALOGUE.md](SPACETIME_CATALOGUE.md). The new CentralBody1PN
+model is separately validated against its analytic test-particle acceleration
+and rejects unsupported multibody/moving-primary scenarios.
 
 ## 3. Relativistic observable validation
 
