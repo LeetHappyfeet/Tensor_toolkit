@@ -16,7 +16,7 @@ from tensor_toolkit.experiment import ExperimentResult, run_experiment
 from tensor_toolkit.alcubierre_study import SIGMA_PRESETS, wall_resolution
 from tensor_toolkit.metrics import AlcubierreMetric
 from tensor_toolkit.io import load_result, save_result
-from tensor_toolkit.registry import builtins, configure_grid, get_experiment
+from tensor_toolkit.registry import gui_builtins, configure_grid, get_experiment
 from tensor_toolkit.visualization import editable_metric_parameters, replace_metric_parameters
 from tensor_toolkit.visualization_data import experiment_volume, trajectory_event_points
 from tensor_toolkit.visualization_io import load_saved_trajectory
@@ -116,7 +116,7 @@ class TensorToolkitVTKGUI(QtWidgets.QMainWindow):
         exp_group = QtWidgets.QGroupBox("Experiment")
         exp_layout = QtWidgets.QFormLayout(exp_group)
         self.metric_box = QtWidgets.QComboBox()
-        self.metric_box.addItems(sorted(builtins()))
+        self.metric_box.addItems(sorted(gui_builtins()))
         self.metric_box.setCurrentText("alcubierre")
         self.metric_box.currentTextChanged.connect(self._metric_changed)
         exp_layout.addRow("Metric", self.metric_box)
