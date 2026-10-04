@@ -67,12 +67,20 @@ tensor-toolkit doctor
 tensor-toolkit list
 ```
 
-Run reference experiments:
+Run reference experiments (see docs/SPACETIME_CATALOGUE.md for chart domains,
+equations, and physics limitations):
+
 
 ```text
 tensor-toolkit run minkowski
 tensor-toolkit run de-sitter
 tensor-toolkit run alcubierre --points 7
+tensor-toolkit run schwarzschild --fields metric
+tensor-toolkit run kerr --fields metric
+tensor-toolkit run kerr-bl --fields metric
+tensor-toolkit run reissner-nordstrom --fields metric
+tensor-toolkit run flrw --fields metric
+tensor-toolkit run plane-wave --fields metric
 ```
 
 Save and inspect results:
