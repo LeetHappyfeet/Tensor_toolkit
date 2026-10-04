@@ -58,7 +58,12 @@ The mathematical conventions are centralized in `tensor_toolkit.conventions` and
 
 The CLI `tensor-toolkit run` and the current desktop visualizer both use this same execution path.
 
-Registered CLI grid experiments currently include Minkowski, flat-slicing de Sitter, and Alcubierre. Schwarzschild exists as a supported metric class and is used programmatically, by validation, and by the trajectory bridge, but is not currently registered as a general `tensor-toolkit run schwarzschild` experiment.
+Registered CLI experiments now include Minkowski, de Sitter, Alcubierre,
+Schwarzschild, Kerr (Cartesian Kerr-Schild and Boyer-Lindquist),
+Reissner-Nordstrom, weak-field 1PN, FLRW (flat/closed/open), and
+linearized TT gravitational waves. Each declares a coordinate chart,
+units, source classification and validity domain. See
+[SPACETIME_CATALOGUE.md](SPACETIME_CATALOGUE.md).
 
 ## Classical simulation path
 
