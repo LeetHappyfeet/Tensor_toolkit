@@ -1,4 +1,5 @@
 """Independent regression tests for paper-backed and supplemental metrics."""
+from dataclasses import replace
 import numpy as np
 import pytest
 
@@ -10,6 +11,8 @@ from tensor_toolkit.metrics import (
 )
 from tensor_toolkit.registry import builtins, gui_builtins, configure_grid
 from tensor_toolkit.spacetime import describe_spacetime
+from tensor_toolkit.experiment import run_experiment
+from tensor_toolkit.validation import validate_lorentzian_signature
 
 
 M = C**2/G  # Schwarzschild length GM/c^2 = 1 metre.
@@ -102,3 +105,16 @@ def test_gui_never_lists_spherical_or_offset_compact_object_grids():
     assert names.isdisjoint({"kerr-bl", "kerr", "reissner-nordstrom", "weak-field-1pn", "schwarzschild"})
     with pytest.raises(ValueError, match="symmetric --extent"):
         configure_grid(builtins()["kerr-bl"], extent=2)
+
+
+def test_metric_pipeline_rejects_wrong_signature_and_preserves_chart_metadata():
+    bad = np.zeros((4, 4, 3, 3, 3, 3), dtype=np.float64)
+    for i in range(4):
+        bad[i, i] = 1.0
+    with pytest.raises(ValueError, match="Lorentzian signature"):
+        validate_lorentzian_signature(bad)
+    for name in ("kerr", "kerr-bl", "reissner-nordstrom", "flrw"):
+        experiment = replace(builtins()[name], outputs=frozenset({"metric", "inverse_metric"}))
+        result = run_experiment(experiment)
+        assert result.fields["inverse_metric"].shape == result.fields["metric"].shape
+        assert result.metadata["spacetime"]["chart"]["names"] == experiment.metric.coordinates
