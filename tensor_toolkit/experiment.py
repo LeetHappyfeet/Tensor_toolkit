@@ -18,6 +18,7 @@ from tensor_toolkit.diagnostics import (
 from tensor_toolkit.memory import memory_plan, output_bytes, select_storage_mode
 from tensor_toolkit.metrics import Metric
 from tensor_toolkit.spacetime import describe_spacetime
+from tensor_toolkit.validation import validate_lorentzian_signature
 from tensor_toolkit.reference.geometry import (
     christoffel_symbols,
     inverse_metric,
@@ -98,6 +99,7 @@ def compute_tensor_fields(metric: np.ndarray, spacings, outputs, *, units: str =
         raise ValueError(f"unsupported tensor outputs: {sorted(unknown)}")
     if not outputs:
         raise ValueError("at least one tensor output is required")
+    metric = validate_lorentzian_signature(metric)
     fields: dict[str, np.ndarray] = {}
     if "metric" in outputs:
         fields["metric"] = metric
