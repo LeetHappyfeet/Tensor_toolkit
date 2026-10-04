@@ -222,6 +222,8 @@ def _run(
         print(f"  {key:14s} shape={value.shape} max|value|={float(abs(value).max()):.6g}")
     _print_memory(result)
     _print_validation(result)
+    for warning in result.metadata.get("resolution", {}).get("warnings", ()):
+        print(f"  RESOLUTION HEURISTIC (not convergence proof): {warning}")
     if output:
         print(f"Saved: {save_result(result, output)}")
     return 0
@@ -277,6 +279,8 @@ def _inspect(path: str, field: str | None = None, center: bool = False) -> int:
     stored = metadata.get("diagnostics", {})
     if stored:
         print(f"Stored validation status: {stored.get('status', 'UNKNOWN')}")
+    for warning in metadata.get("resolution", {}).get("warnings", ()):
+        print(f"Resolution heuristic (not convergence proof): {warning}")
     return 0
 
 
