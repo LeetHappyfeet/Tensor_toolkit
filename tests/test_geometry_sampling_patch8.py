@@ -91,3 +91,17 @@ def test_invalid_strategy_and_no_grid_are_rejected():
         SpacetimeSampler(MinkowskiMetric(), SPACING, method="unknown")
     with pytest.raises(ValueError, match="ExperimentResult"):
         SpacetimeSampler(MinkowskiMetric(), SPACING, method="cached_grid")
+
+
+def test_saved_grid_roundtrip_can_be_sampled_after_reload(tmp_path):
+    from tensor_toolkit.io import save_result, load_experiment_result
+    experiment = replace(builtins()["minkowski"],
+                         outputs=frozenset({"metric", "christoffel"}))
+    original = run_experiment(experiment)
+    save_result(original, tmp_path)
+    loaded = load_experiment_result(tmp_path)
+    sampler = SpacetimeSampler(experiment.metric, SPACING, method="cached_grid",
+                               grid_result=loaded)
+    assert np.allclose(sampler.metric_at((0., .3, .1, .2)),
+                       np.diag([-1., 1., 1., 1.]))
+    assert np.allclose(sampler.connection_at((0., .3, .1, .2)), 0.)
