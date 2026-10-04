@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Protocol, ClassVar
 
 import numpy as np
 
 from tensor_toolkit.constants import GRAVITATIONAL_CONSTANT, SPEED_OF_LIGHT
+from tensor_toolkit.spacetime import CoordinateChart, SpacetimeDefinition, CATALOGUE_REFERENCE
 
 
 class Metric(Protocol):
@@ -15,6 +16,7 @@ class Metric(Protocol):
 
     name: str
     coordinates: tuple[str, str, str, str]
+    definition: SpacetimeDefinition
 
     def evaluate(self, coordinate_grid: tuple[np.ndarray, ...]) -> np.ndarray:
         """Return covariant g_mu_nu with shape (4, 4, Nt, Nx, Ny, Nz)."""
@@ -26,6 +28,10 @@ def _grid_shape(coordinate_grid: tuple[np.ndarray, ...]) -> tuple[int, ...]:
 
 @dataclass(frozen=True)
 class MinkowskiMetric:
+    definition: ClassVar[SpacetimeDefinition] = SpacetimeDefinition(
+        "Minkowski", CoordinateChart(("t", "x", "y", "z"),
+        ("geometrized",)*4, "cartesian", "all finite coordinates"),
+        "flat", CATALOGUE_REFERENCE + ", section 2.1.1")
     name: str = "Minkowski"
     coordinates: tuple[str, str, str, str] = ("t", "x", "y", "z")
 
@@ -40,6 +46,10 @@ class MinkowskiMetric:
 @dataclass(frozen=True)
 class DeSitterFlatMetric:
     """Flat-slicing de Sitter metric ds^2=-dt^2+exp(2Ht)(dx^2+dy^2+dz^2)."""
+    definition: ClassVar[SpacetimeDefinition] = SpacetimeDefinition(
+        "de-Sitter", CoordinateChart(("t", "x", "y", "z"),
+        ("geometrized",)*4, "cartesian", "all finite coordinates"),
+        "exact", CATALOGUE_REFERENCE + ", section 2.21 (flat slicing)")
 
     hubble: float = 0.1
     name: str = "de Sitter (flat slicing)"
@@ -64,6 +74,10 @@ class AlcubierreMetric:
     Geometrized units are used (c=G=1). The ship center follows x_s(t)=x0+v*t.
     The standard smooth top-hat shape function is used.
     """
+    definition: ClassVar[SpacetimeDefinition] = SpacetimeDefinition(
+        "Alcubierre", CoordinateChart(("t", "x", "y", "z"),
+        ("geometrized",)*4, "cartesian", "radius>0; sigma>0"),
+        "prescribed", CATALOGUE_REFERENCE + ", section 2.3")
 
     velocity: float = 0.1
     radius: float = 2.0
@@ -106,6 +120,10 @@ class SchwarzschildIsotropicMetric:
     components are dimensionless. The isotropic radius rho must remain outside
     the horizon rho = GM/(2 c^2).
     """
+    definition: ClassVar[SpacetimeDefinition] = SpacetimeDefinition(
+        "Schwarzschild", CoordinateChart(("ct", "x", "y", "z"),
+        ("m",)*4, "isotropic-cartesian", "rho > GM/(2c²)"),
+        "exact", CATALOGUE_REFERENCE + ", section 2.2.3 (Cartesian isotropic chart)")
 
     mass_kg: float
     name: str = "Schwarzschild (isotropic Cartesian)"
@@ -144,10 +162,18 @@ class SchwarzschildIsotropicMetric:
         return g
 
 
+# The optional metrics share the same evaluate() contract and never import VTK.
+from tensor_toolkit.catalogue_metrics import (
+    KerrBoyerLindquistMetric, KerrSchildMetric, ReissnerNordstromMetric,
+    FLRWMetric, LinearizedPlaneWaveMetric, WeakField1PNMetric,
+)
+
 __all__ = [
     "Metric",
     "MinkowskiMetric",
     "DeSitterFlatMetric",
     "AlcubierreMetric",
     "SchwarzschildIsotropicMetric",
+    "KerrBoyerLindquistMetric", "KerrSchildMetric", "ReissnerNordstromMetric",
+    "FLRWMetric", "LinearizedPlaneWaveMetric", "WeakField1PNMetric",
 ]
