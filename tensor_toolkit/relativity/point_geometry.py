@@ -7,11 +7,13 @@ The grid backend interpolates saved numerical fields: it does NOT recompute GR.
 from __future__ import annotations
 
 from itertools import product
+from dataclasses import asdict
+import json
 import numpy as np
 
-from tensor_toolkit.constants import GRAVITATIONAL_CONSTANT, SPEED_OF_LIGHT
 from tensor_toolkit.metrics import MinkowskiMetric, SchwarzschildIsotropicMetric
 from tensor_toolkit.validation import validate_lorentzian_signature
+from tensor_toolkit.spacetime import describe_spacetime
 
 CONNECTION_FIELDS = frozenset({"metric", "inverse_metric", "christoffel"})
 
@@ -113,9 +115,13 @@ def interpolated_grid_fields(result, metric, event, outputs, *, units):
     approximate even if the input grid was produced by an analytic metric.
     """
     expected = repr(metric)
+    source_chart = result.metadata.get("spacetime")
+    actual_chart = asdict(describe_spacetime(metric))
     if (result.metric_name != metric.name or
         tuple(result.coordinates) != tuple(metric.coordinates) or
-        result.metadata.get("metric_configuration") != expected):
+        result.metadata.get("metric_configuration") != expected or
+        source_chart is None or
+        json.dumps(source_chart, sort_keys=True) != json.dumps(actual_chart, sort_keys=True)):
         raise ValueError("saved geometry grid does not match metric instance, parameters or chart")
     if ("stress_energy" in outputs and
         result.metadata.get("stress_energy_units") != units):
@@ -138,6 +144,8 @@ def interpolated_grid_fields(result, metric, event, outputs, *, units):
         if name not in result.fields:
             raise KeyError(f"cached grid has no retained field {name!r}")
         source = np.asanyarray(result.fields[name])
+        if source.dtype != np.float64:
+            raise TypeError("cached geometry requires float64 fields from the reference solver")
         prefix = source.shape[:-4]
         if source.shape[-4:] != tuple(len(a) for a in axes):
             raise ValueError("saved field and axes disagree")
