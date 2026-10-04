@@ -36,7 +36,7 @@ truncated approximation, not a metric table copied from the PDF.
 | kerr | KerrSchildMetric | ct,x,y,z (metres) | exterior Kerr–Schild Cartesian |
 | kerr-bl | KerrBoyerLindquistMetric | ct,r,theta,phi (m,m,rad,rad) | exterior Boyer–Lindquist Kerr |
 | reissner-nordstrom | ReissnerNordstromMetric | ct,r,theta,phi (m,m,rad,rad) | subextremal charged exterior |
-| weak-field-1pn | WeakField1PNMetric | ct,x,y,z (metres) | static spherical 1PN truncation |
+| schwarzschild-interior | ConstantDensityInteriorMetric | ct,r,theta,phi (m,m,rad,rad) | constant-density static star interior |\n| weak-field-1pn | WeakField1PNMetric | ct,x,y,z (metres) | static spherical 1PN truncation |
 | flrw | FLRWMetric (k=0) | t,x,y,z (geometrized) | flat spatial stereographic chart |
 | flrw-closed | FLRWMetric (k=+1) | t,x,y,z (geometrized) | positive spatial curvature |
 | flrw-open | FLRWMetric (k=-1) | t,x,y,z (geometrized) | negative curvature; r<2 patch |
@@ -73,6 +73,10 @@ expose the spherical/offset exterior grids as x/y/z volumes.
   Kerr–Schild chart is Schwarzschild **Kerr–Schild**, not Schwarzschild
   isotropic coordinates; equal component-by-component comparison of
   the two different charts is invalid.
+- Interior Schwarzschild models a static homogeneous-density star with
+  surface radius R > 9GM/(4c²), in an areal spherical chart. Its metric
+  matches the exterior Schwarzschild areal chart at the surface. It is
+  analytical and is not a TOV solver or evolving matter source.
 - Reissner–Nordstroem uses physical SI charge `Q` in coulombs and
   `q²=GQ²/(4*pi*epsilon0*c^4)`, rather than silently reusing a differently
   normalized charge symbol from the Catalogue. The registered example
