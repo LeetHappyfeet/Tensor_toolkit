@@ -53,6 +53,12 @@ Comparisons refuse mismatched metric configurations, chart descriptions, units,
 physical domains and non-nested coordinate nodes. They compare raw physical
 components without smoothing or interpolating data.
 
+For opt-in spatial symmetry checks, `spatial_reflection_report(result, "stress_energy",
+axis=2)` checks Alcubierre's transverse y-reflection. The rank-two tensor
+indices receive the appropriate reflection parity; scalar curvature is even.
+The current justified rules cover y/z for Alcubierre and centered Cartesian
+spatial axes for Minkowski, not arbitrary charts or spacetimes.
+
 ## Patch 8: explicit geometry sampling strategies
 
 `SpacetimeSampler` retains its default historical second-order numerical
