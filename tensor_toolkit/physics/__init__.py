@@ -21,6 +21,7 @@ from .demos import demo_flyby_experiment, simulation_demos
 from .dynamics import (
     CompositeDynamics,
     ConstantThrust,
+    CentralBody1PN,
     DynamicsModel,
     NewtonianGravity,
 )
@@ -35,6 +36,10 @@ from .experiments import (
     SimulationExperimentResult,
     run_simulation_experiment,
     save_simulation_experiment_result,
+)
+from .properties import (
+    PhysicalProperties, RotationProperties, MaterialProperties,
+    ElectromagneticProperties, PropulsionProperties,
 )
 from .gravity import newtonian_gravity_accelerations
 from .integrators import simulate
@@ -57,6 +62,9 @@ __all__ = [
     "trajectory_worldline",
     "DynamicsModel",
     "NewtonianGravity",
+    "CentralBody1PN",
+    "PhysicalProperties", "RotationProperties", "MaterialProperties",
+    "ElectromagneticProperties", "PropulsionProperties",
     "ConstantThrust",
     "CompositeDynamics",
     "EventDetector",
