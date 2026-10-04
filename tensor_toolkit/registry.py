@@ -105,7 +105,7 @@ def configure_grid(
     return replace(experiment, axes=tuple(axes))
 
 
-__all__ = ["builtins", "get_experiment", "configure_grid"]
+__all__ = ["builtins", "get_experiment", "configure_grid", "gui_builtins"]
 
 
 # The Cartesian-only volume GUI must not mistake (r,theta,phi) for (x,y,z).
