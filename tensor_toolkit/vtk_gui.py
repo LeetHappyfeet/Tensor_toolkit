@@ -470,8 +470,8 @@ class TensorToolkitVTKGUI(QtWidgets.QMainWindow):
         warnings = resolution.get("warnings", ())
         self.validation_label.setText(
             f"Pipeline validation status: {diagnostics.get('status', 'unknown')}"
-            + ("\\nResolution heuristics (NOT convergence proof):\\n• " + "\\n• ".join(warnings)
-               if warnings else "\\nResolution heuristics: no flagged risks; convergence not established")
+            + ("\nResolution heuristics (NOT convergence proof):\n• " + "\n• ".join(warnings)
+               if warnings else "\nResolution heuristics: no flagged risks; convergence not established")
         )
         self.status_label.setText(
             f"Loaded {result.metric_name}; grid {result.metadata.get('shape', '?')}"
